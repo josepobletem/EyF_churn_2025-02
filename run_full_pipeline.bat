@@ -59,11 +59,27 @@ echo )
 echo.
 echo === [4/4] Entrenando modelo final ===========================
 echo -> trainer: reentrena con TODO el dataset de features usando best_params.yaml
-python -m src.trainer
+echo python -m src.trainer
+echo IF ERRORLEVEL 1 (
+echo     echo [ERROR] Fallo en src.trainer
+echo     exit /b 1
+echo )
+
+echo ==========================================================
+echo === [5/5] Scoring / Prediccion mensual ==================
+echo ==========================================================
+
+REM Ajusta estos parámetros si queres scorar otro mes / umbral
+set SCORE_MES=202106
+set SCORE_THRESHOLD=0.0039
+
+echo -> Predict mes %SCORE_MES% con threshold %SCORE_THRESHOLD%
+python -m src.predict --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
 IF ERRORLEVEL 1 (
-    echo [ERROR] Fallo en src.trainer
+    echo [ERROR] Fallo en src.predict
     exit /b 1
 )
+echo.
 
 echo.
 echo Pipeline completo OK

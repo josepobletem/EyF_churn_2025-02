@@ -81,7 +81,7 @@ class TrainConfig(BaseModel):
     objective: str = Field("binary", description="LightGBM objective")
     boosting_type: str = Field("gbdt", description="gbdt | dart | goss")
     n_estimators: int = Field(
-        100,
+        1000,
         description="num_boost_round máximo en cv"
     )
     nfold: int = Field(
@@ -93,7 +93,7 @@ class TrainConfig(BaseModel):
         description="semilla reproducible"
     )
     n_trials: int = Field(
-        3,
+        50,
         description="cantidad de trials Optuna"
     )
 

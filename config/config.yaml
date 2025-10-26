@@ -20,6 +20,7 @@ columns:
   
   # target para el optimizador
   binary_target_col: "clase_binaria2"
+  peso_col: "clase_peso"
 
 logic:
   # Documentación de negocio de churn
@@ -41,3 +42,4 @@ features:
     - "sql/01_base_tables.sql"
     - "sql/02_feat_numeric.sql"
     - "sql/03_final_model.sql"
+

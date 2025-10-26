@@ -277,7 +277,7 @@ def train_final_model() -> dict:
         best_info = yaml.safe_load(f)
 
     best_params = best_info["best_params"]
-    best_iteration = int(best_info.get("best_iteration", 500))  # fallback defensivo
+    best_iteration = int(best_info.get("best_iteration", 5000))  # fallback defensivo
 
     logger.info("Hiperparámetros óptimos cargados de optimizer:")
     logger.info(best_params)
@@ -308,7 +308,7 @@ def train_final_model() -> dict:
     logloss_in = log_loss(y_train, y_pred_proba)
 
     # matriz de confusión usando threshold 0.5
-    y_pred_label = (y_pred_proba >= 0.5).astype(int)
+    y_pred_label = (y_pred_proba >= 0.025).astype(int)
     cm_in = confusion_matrix(y_train, y_pred_label).tolist()
 
     logger.info("📊 LogLoss in-sample: %.6f", logloss_in)
@@ -325,6 +325,8 @@ def train_final_model() -> dict:
 
     # 9. guardar métricas finales y metadata de entrenamiento
     metrics_path = os.path.join(train_cfg.models_dir, "final_metrics.yaml")
+    feature_names_train = list(X_train.columns)
+    
     with open(metrics_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
             {
@@ -338,6 +340,7 @@ def train_final_model() -> dict:
                 "best_iteration": best_iteration,
                 "logloss_in_sample": float(logloss_in),
                 "confusion_matrix_in_sample": cm_in,
+                "feature_names": feature_names_train,
             },
             f,
             sort_keys=False,
