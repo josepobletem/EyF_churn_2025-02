@@ -1,8 +1,132 @@
-# datasets grandes / data bruta
-*.parquet
-*.csv
-
-# entorno local
+########################################
+# ENTORNOS / VENV
+########################################
 .venv/
-.ipynb_checkpoints/
+venv/
+ENV/
+env/
+*.env
+*.venv
+
+########################################
+# ARCHIVOS DE SISTEMA / EDITOR
+########################################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+########################################
+# COMPILADOS / CACHE PYTHON
+########################################
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+build/
+dist/
+
+########################################
+# CACHE TESTS
+########################################
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.cache/
+
+########################################
+# DATOS GRANDES / RESULTADOS INTERMEDIOS
+########################################
+# Datos crudos y procesados
+data/**/*.csv
+data/**/*.CSV
+data/**/*.parquet
+data/**/*.Parquet
+data/**/*.pq
+data/**/*.feather
+data/**/*.jsonl
+data/**/*.zip
+data/**/*.gz
+data/**/*.bz2
+data/**/*.xz
+
+# Evitar que se suban dumps intermedios que a veces quedan sueltos en raíz
+*.csv
+*.CSV
+*.parquet
+*.Parquet
+*.pq
+*.feather
+*.jsonl
+*.zip
+*.gz
+*.bz2
+*.xz
+
+# Si querés permitir algún CSV chico de ejemplo para doc/ejemplo,
+# podés sacar excepciones así:
+#!data/sample/example_small.csv
+
+########################################
+# ARTEFACTOS DE ENTRENAMIENTO / MODELOS
+########################################
+models/*.pkl
+models/*.pickle
+models/*.joblib
+models/*.bin
+models/*.pt
+models/*.onnx
+
+# Métricas y params generados automáticamente
+models/best_params.yaml
+models/final_metrics.yaml
+
+########################################
+# NOTEBOOKS OUTPUT / CHECKPOINTS
+########################################
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+########################################
+# LOGS / OUTPUT TEMPORAL
+########################################
+logs/
+*.log
+*.tmp
+tmp/
+temp/
+**/temp/
+**/tmp/
+
+########################################
+# ARCHIVOS DE DUCKDB / SQLITE / LOCKS
+########################################
+*.duckdb
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.lock
+
+########################################
+# ARCHIVOS DE WINDOWS / POWERSHELL
+########################################
+*.ps1~
+*.bat~
+*.cmd~
+desktop.ini
+
+########################################
+# CI / LOCAL ONLY
+########################################
+# (Si guardás credenciales temporales / runs locales de Optuna, etc.)
+*.study
+optuna_studies/
+optuna_checkpoints/
