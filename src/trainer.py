@@ -277,7 +277,7 @@ def train_final_model() -> dict:
         best_info = yaml.safe_load(f)
 
     best_params = best_info["best_params"]
-    best_iteration = int(best_info.get("best_iteration", 5000))  # fallback defensivo
+    best_iteration = int(best_info.get("best_iteration", 500))  # fallback defensivo
 
     logger.info("Hiperparámetros óptimos cargados de optimizer:")
     logger.info(best_params)
@@ -298,12 +298,17 @@ def train_final_model() -> dict:
     )
 
     # 7. métricas in-sample (sanity check) sobre el mismo train
-    y_pred_proba = final_model.predict(X_train)  # devuelve probs (para binary, prob de clase positiva)
+    # LightGBM en binario devuelve prob(clase positiva)
+    y_pred_proba = final_model.predict(X_train)
+
+    # evitar probs 0/1 exactas antes de log_loss
+    y_pred_proba = np.clip(y_pred_proba, 1e-15, 1 - 1e-15)
+
     # logloss binaria
-    logloss_in = log_loss(y_train, y_pred_proba, eps=1e-15)
+    logloss_in = log_loss(y_train, y_pred_proba)
 
-    y_pred_label = (y_pred_proba >= 0.025).astype(int)
-
+    # matriz de confusión usando threshold 0.5
+    y_pred_label = (y_pred_proba >= 0.5).astype(int)
     cm_in = confusion_matrix(y_train, y_pred_label).tolist()
 
     logger.info("📊 LogLoss in-sample: %.6f", logloss_in)

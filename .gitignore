@@ -130,3 +130,7 @@ desktop.ini
 *.study
 optuna_studies/
 optuna_checkpoints/
+
+optimizer
+Paso
+trainer

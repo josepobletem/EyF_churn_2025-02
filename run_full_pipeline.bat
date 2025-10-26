@@ -50,16 +50,16 @@ echo )
 echo.
 echo === [3/4] Buscando hiperparámetros ==========================
 echo -> optimizer: Optuna / LightGBM, guarda best_params.yaml y best_model.pkl
-python -m src.optimizer
-IF ERRORLEVEL 1 (
-    echo [ERROR] Fallo en src.optimizer
-    exit /b 1
-)
+echo python -m src.optimizer
+echo IF ERRORLEVEL 1 (
+echo     echo [ERROR] Fallo en src.optimizer
+echo     exit /b 1
+echo )
 
 echo.
 echo === [4/4] Entrenando modelo final ===========================
 echo -> trainer: reentrena con TODO el dataset de features usando best_params.yaml
-REM python -m src.trainer
+python -m src.trainer
 IF ERRORLEVEL 1 (
     echo [ERROR] Fallo en src.trainer
     exit /b 1
