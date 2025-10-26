@@ -3,22 +3,82 @@ import pickle
 import yaml
 import pytest
 import pandas as pd
-
+import numpy as np
 import src.optimizer as optimizer
+
+
+# ---------- Dummies globales (para que pickle no rompa) ----------
+
+class DummyBooster:
+    """
+    Simula el objeto que devuelve lightgbm.train().
+    Debe ser pickleable (definida a nivel módulo).
+    """
+    def predict(self, X):
+        # Devuelve probabilidades válidas [0,1] con misma cantidad de filas que X
+        # En binary LGBM esto normalmente es prob de la clase positiva.
+        return np.full(shape=(len(X),), fill_value=0.2, dtype=float)
+
+
+class DummyStudy:
+    """
+    Simula el objeto Study de Optuna.
+    Tiene .best_params y .best_value,
+    y una .optimize() que no hace nada.
+    """
+    def __init__(self):
+        # Hiperparámetros tipo LightGBM binary que matchean tu pipeline real
+        self.best_params = {
+            "objective": "binary",
+            "boosting_type": "gbdt",
+            "metric": "None",
+            "verbose": -1,
+            "seed": 123,
+            "learning_rate": 0.05,
+            "num_leaves": 32,
+            "max_depth": 6,
+            "min_data_in_leaf": 20,
+            "feature_fraction": 0.8,
+            "bagging_fraction": 0.8,
+            "bagging_freq": 1,
+            "min_split_gain": 0.0,
+            "min_sum_hessian_in_leaf": 0.1,
+            "lambda_l1": 0.0,
+            "lambda_l2": 0.0,
+            "feature_fraction_bynode": 0.9,
+            "extra_trees": False,
+            "max_bin": 255,
+            "scale_pos_weight": 1.0,
+        }
+        # simulamos la métrica de negocio gan_eval
+        self.best_value = 123456789.0
+
+    def optimize(self, objective, n_trials):
+        # no corremos nada en tests
+        return
+
+
+# ---------- Helpers internos del test ----------
 
 def _make_fake_features_df():
     """
-    Dataset sintético multiclase para probar optimizer.
-    Aseguramos >=2 ejemplos por clase para que stratify funcione.
+    Dataset sintético compatible con el pipeline actual.
+    Incluye:
+    - numero_de_cliente, foto_mes, clase_ternaria
+    - columnas numéricas
+    - meses para train_months/test_month
     """
     return pd.DataFrame(
         {
-            "numero_de_cliente": [100, 100, 200, 200, 300, 300],
-            "foto_mes": [202401, 202402, 202401, 202402, 202401, 202402],
+            "numero_de_cliente": [100, 101, 102, 103, 104, 105],
+            "foto_mes": [202101, 202101, 202102, 202102, 202103, 202104],
             "clase_ternaria": [
-                "CONTINUA", "CONTINUA",
-                "BAJA+1", "BAJA+1",
-                "BAJA+2", "BAJA+2",
+                "CONTINUA",
+                "BAJA+1",
+                "BAJA+2",
+                "BAJA+1",
+                "CONTINUA",
+                "BAJA+2",
             ],
             "feature_a": [1.0, 2.0, 0.5, 1.5, 3.0, 2.5],
             "feature_b": [10.0, 11.0, 9.0, 9.5, 7.5, 7.8],
@@ -29,8 +89,7 @@ def _make_fake_features_df():
 
 def _write_temp_config(tmp_path, feature_csv_path, models_dir):
     """
-    Crea un config.yaml temporal apuntando al dataset de features
-    y al directorio models.
+    Crea un config.yaml temporal alineado con el esquema NUEVO del pipeline.
     """
     cfg_text = f"""
 paths:
@@ -41,31 +100,43 @@ paths:
 columns:
   id_column: "numero_de_cliente"
   period_column: "foto_mes"
-  target_column: "clase_ternaria"
-
-features:
-  base_table_name: "base_clientes"
-  steps:
-    - "sql/01_base_tables.sql"
-    - "sql/02_feat_numeric.sql"
-    - "sql/03_final_model.sql"
+  target_column_full: "clase_ternaria"
+  binary_target_col: "clase_binaria2"
+  peso_col: "clase_peso"
 
 train:
-  test_size: 0.5
-  random_state: 123
-  n_trials: 5
   models_dir: "{models_dir.as_posix()}"
+
+  train_months: [202101, 202102, 202103]
+  test_month: 202104
+
+  drop_cols: []
+
+  n_estimators: 200
+  nfold: 3
+  seed: 123
+  n_trials: 2
+
+  ganancia_acierto: 780000.0
+  costo_estimulo: 20000.0
+
+  weight_baja2: 1.00002
+  weight_baja1: 1.00001
+  weight_continua: 1.0
 """
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(cfg_text, encoding="utf-8")
     return cfg_path
 
 
+# ---------- El test principal ----------
+
 def test_optimizer_run_hyperparam_search(tmp_path, monkeypatch):
     """
-    Valida que optimizer.run_hyperparam_search():
-    - cargue el dataset de features
-    - haga la búsqueda simulada
+    Valida que run_optuna_and_train():
+    - lea config
+    - construya el dataset de entrenamiento a partir de train_months
+    - "ejecute" una pseudo-búsqueda y entrenamiento final (mockeado)
     - guarde best_params.yaml y best_model.pkl
     - devuelva info coherente
     """
@@ -90,7 +161,7 @@ def test_optimizer_run_hyperparam_search(tmp_path, monkeypatch):
         models_dir=models_dir,
     )
 
-    # 4. Cargar config real una vez y monkeypatch para que la reutilice
+    # 4. Monkeypatch: cargar esa config en vez de leer la real del repo
     real_cfg = optimizer.load_config(str(cfg_path))
 
     def _fake_load_config():
@@ -98,56 +169,63 @@ def test_optimizer_run_hyperparam_search(tmp_path, monkeypatch):
 
     monkeypatch.setattr(optimizer, "load_config", _fake_load_config)
 
-
-    # 5. Monkeypatch de optuna para NO correr búsqueda real
-    class DummyStudy:
-        def __init__(self):
-            self.best_params = {
-                "n_estimators": 123,
-                "learning_rate": 0.1,
-                "num_leaves": 31,
-                "max_depth": 6,
-                "min_child_samples": 20,
-                "subsample": 0.9,
-                "colsample_bytree": 0.8,
-            }
-            self.best_value = 0.42  # logloss simulado
-
-        def optimize(self, objective, n_trials):
-            # No ejecutamos objective() para acelerar tests.
-            return
-
-    def fake_create_study(direction):
+    # 5. Monkeypatch de optuna.create_study
+    #    Acepta cualquier firma para no romper si optimizer pasa study_name, direction, etc.
+    def fake_create_study(*args, **kwargs):
         return DummyStudy()
 
     monkeypatch.setattr(optimizer.optuna, "create_study", fake_create_study)
 
-    # 6. Ejecutar la función bajo test
-    result = optimizer.run_hyperparam_search()
+    # 6. Monkeypatch de lightgbm.cv y lightgbm.train
+    #    - cv() devuelve una curva sintética de gan_eval
+    #    - train() devuelve DummyBooster (pickleable y con predict())
+    def fake_cv(params,
+                train_set,
+                num_boost_round,
+                feval,
+                stratified,
+                nfold,
+                seed,
+                callbacks):
+        # Simulamos evolución de la métrica gan_eval
+        # clave: tu código busca la serie con mayor longitud y luego toma max()
+        return {
+            "gan_eval": [10.0, 20.0, 30.0, 42.0]  # mejor = 42.0 al final
+        }
 
-    # 7. Validaciones de salida
-    assert "best_params" in result
-    assert "best_score" in result
+    def fake_train(params, train_set, num_boost_round):
+        return DummyBooster()
+
+    monkeypatch.setattr(optimizer.lgb, "cv", fake_cv)
+    monkeypatch.setattr(optimizer.lgb, "train", fake_train)
+
+    # 7. Ejecutar tu orquestador real
+    #    Asegurate de que optimizer.py tenga esta función pública.
+    result = optimizer.run_optuna_and_train()
+
+    # 8. Validaciones de salida básicas
     assert "model_path" in result
     assert "params_path" in result
+    assert "best_iteration" in result
 
-    # Debe haber guardado los archivos en disco
+    # Puede venir "best_params" y/o "best_value" dependiendo de tu implementación
     assert os.path.exists(result["model_path"])
     assert os.path.exists(result["params_path"])
 
-    # Cargar YAML de hiperparámetros
+    # 9. Validar YAML escrito
     with open(result["params_path"], "r", encoding="utf-8") as f:
-        saved_params = yaml.safe_load(f)
+        saved_yaml = yaml.safe_load(f)
 
-    assert "best_params" in saved_params
-    assert "best_score_logloss" in saved_params
-    assert saved_params["target_column"] == "clase_ternaria"
+    # cosas que esperamos en tu pipeline actual
+    assert "train_months" in saved_yaml
+    assert "test_month" in saved_yaml
+    assert "best_iteration" in saved_yaml
+    # puede ser "lgbm_params" o "best_params" según cómo lo guardes:
+    assert ("lgbm_params" in saved_yaml) or ("best_params" in saved_yaml)
 
-    # Cargar el modelo pickled
+    # 10. Cargar el modelo pickled y ver que se pueda usar
     with open(result["model_path"], "rb") as f:
         model_obj = pickle.load(f)
 
-    # Debe comportarse como un clasificador sklearn-ish
-    assert hasattr(model_obj, "predict_proba")
-    assert hasattr(model_obj, "fit")
     assert hasattr(model_obj, "predict")
+    # no exigimos .fit() porque ahora guardamos Booster, no sklearn

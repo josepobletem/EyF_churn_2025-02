@@ -11,22 +11,32 @@ EyF_churn_2025-02/
 ├── config/
 │   └── config.yaml
 ├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── features/
+│   ├── raw/                # datos crudos originales
+│   ├── processed/          # datos limpios + target + features finales combinadas
+│   ├── features/           # (opcional) dumps intermedios de features
+│   ├── test/               # datos de holdout / scoring (mes test_month)
+│   └── README_data.md      # (opcional) descripción de datasets
 ├── models/
-│   ├── best_model.pkl
-│   └── best_params.yaml
+│   ├── best_model.pkl          # modelo candidato encontrado por optimizer
+│   ├── best_params.yaml        # hiperparámetros óptimos + metadata
+│   ├── final_model.pkl         # modelo final reentrenado en train_months
+│   └── final_metrics.yaml      # métricas in-sample finales
 ├── sql/
 │   ├── 01_base_tables.sql
 │   ├── 02_feat_numeric.sql
 │   └── 03_final_join.sql
 ├── src/
-│   ├── data_prep.py
-│   ├── feature_engineering.py
-│   ├── optimizer.py
-│   ├── trainer.py
-│   └── utils/
+│   ├── data_prep.py            # genera dataset procesado con target
+│   ├── feature_engineering.py  # arma features en DuckDB/SQL
+│   ├── optimizer.py            # Optuna + LightGBM + gan_eval
+│   ├── trainer.py              # reentrena modelo final con best_params.yaml
+│   └── utils/                  # helpers comunes (si aplica)
+├── tests/
+│   ├── test_data_prep.py           # prueba carga y procesamiento inicial
+│   ├── test_feature_engineering.py # prueba consultas SQL y features generadas
+│   ├── test_optimizer.py           # prueba búsqueda de hiperparámetros
+│   ├── test_trainer.py             # prueba entrenamiento final y guardado de modelo
+│   └── conftest.py (opcional)      # configuración común de pytest (fixtures)
 ├── run_full_pipeline.bat
 ├── run_full_pipeline.sh
 └── README.md
