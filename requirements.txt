@@ -1,0 +1,12 @@
+pytest
+pandas
+numpy
+scikit-learn
+lightgbm
+optuna
+duckdb
+pyyaml
+pydantic
+black
+isort
+pylint

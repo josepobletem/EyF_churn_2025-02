@@ -1,0 +1,40 @@
+paths:
+  # dataset crudo original (sin target todavía)
+  raw_dataset: "data/raw/competencia_01_crudo.csv"
+
+  # dataset con target churn/class (output de data_prep.py)
+  processed_dataset: "data/processed/competencia_01.csv"
+
+  # dataset final con features listo para entrenar (output de feature_engineering.py)
+  feature_dataset: "data/processed/competencia_01_features.csv"
+
+columns:
+  # identificador único del cliente
+  id_column: "numero_de_cliente"
+
+  # periodo tipo YYYYMM (por ejemplo 202104)
+  period_column: "foto_mes"
+
+  # target creado en data_prep.py: BAJA+1 / BAJA+2 / CONTINUA
+  target_column: "clase_ternaria"
+
+logic:
+  # Documentación de negocio de churn
+  churn_definition: |
+    CASE
+      WHEN esta_t1 = 0 THEN 'BAJA+1'
+      WHEN esta_t1 = 1 AND esta_t2 = 0 THEN 'BAJA+2'
+      ELSE 'CONTINUA'
+    END
+  time_granularity: "mes"
+
+features:
+  # nombre con el que vamos a registrar el dataset base en DuckDB
+  # (es el processed_dataset leído por Python)
+  base_table_name: "base_clientes"
+
+  # orden de ejecución de los SQL
+  steps:
+    - "sql/01_win_features.sql"
+    - "sql/02_numeric_features.sql"
+    - "sql/03_final_join.sql"

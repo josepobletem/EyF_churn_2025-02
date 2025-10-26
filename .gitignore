@@ -1,0 +1,9 @@
+# datasets grandes / data bruta
+data/
+*.parquet
+*.csv
+
+# entorno local
+.venv/
+.ipynb_checkpoints/
+__pycache__/
