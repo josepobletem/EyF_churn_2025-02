@@ -236,4 +236,4 @@ Al finalizar, el pipeline genera:
 
 **José Poblete M.**  
 Data Scientist & MLOps Engineer  
-Facultad de Ciencias Económicas — UBA / Falabella Technology  
+Facultad de Ciencias Naturales — UBA.
