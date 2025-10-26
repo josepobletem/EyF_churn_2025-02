@@ -1,5 +1,4 @@
 # datasets grandes / data bruta
-data/
 *.parquet
 *.csv
 
