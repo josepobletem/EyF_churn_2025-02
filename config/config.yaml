@@ -17,6 +17,9 @@ columns:
 
   # target creado en data_prep.py: BAJA+1 / BAJA+2 / CONTINUA
   target_column: "clase_ternaria"
+  
+  # target para el optimizador
+  binary_target_col: "clase_binaria2"
 
 logic:
   # Documentación de negocio de churn
@@ -35,6 +38,6 @@ features:
 
   # orden de ejecución de los SQL
   steps:
-    - "sql/01_win_features.sql"
-    - "sql/02_numeric_features.sql"
-    - "sql/03_final_join.sql"
+    - "sql/01_base_tables.sql"
+    - "sql/02_feat_numeric.sql"
+    - "sql/03_final_model.sql"
