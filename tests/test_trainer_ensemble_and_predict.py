@@ -404,7 +404,6 @@ class TestMainSmoke(unittest.TestCase):
             files = [f for f in os.listdir(out_dir) if f.endswith(".csv")]
             self.assertTrue(any("pred_" in f for f in files))
             self.assertTrue(any("pred_simple_" in f for f in files))
-            shutil.rmtree(out_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

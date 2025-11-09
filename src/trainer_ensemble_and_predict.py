@@ -319,7 +319,7 @@ def train_final_ensemble(config_path: str = "config/config.yaml") -> Dict[str, A
     logger.info("Semillas usadas en el ensamble: %s", seeds_list)
 
     os.makedirs(train_cfg.models_dir, exist_ok=True)
-    ens_dir = os.path.join(train_cfg.models_dir, "ensamble-2")
+    ens_dir = os.path.join(train_cfg.models_dir, "ensamble-4")
     os.makedirs(ens_dir, exist_ok=True)
 
     all_model_paths: List[str] = []
@@ -347,7 +347,7 @@ def train_final_ensemble(config_path: str = "config/config.yaml") -> Dict[str, A
     y_pred_label_ensemble = (y_pred_proba_ensemble >= thr).astype(int)
     cm_in = confusion_matrix(y_train, y_pred_label_ensemble).tolist()
 
-    ensemble_meta_path = os.path.join(train_cfg.models_dir, "ensamble-2/final_ensemble_metadata.yaml")
+    ensemble_meta_path = os.path.join(train_cfg.models_dir, "ensamble-4/final_ensemble_metadata.yaml")
 
     with open(ensemble_meta_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
@@ -457,7 +457,7 @@ def load_ensemble_models_and_meta(cfg: FullConfig) -> Tuple[List[Any], Dict[str,
     - path del metadata
     """
     train_cfg = cfg.train or TrainConfig()
-    meta_path = os.path.join(train_cfg.models_dir, "ensamble-2/final_ensemble_metadata.yaml")
+    meta_path = os.path.join(train_cfg.models_dir, "ensamble-4/final_ensemble_metadata.yaml")
     if not os.path.exists(meta_path):
         raise FileNotFoundError(f"No encontré metadata del ensamble en {meta_path}. Corré entrenamiento primero.")
 
@@ -640,7 +640,7 @@ def main(argv=None):
 
         out_path_full = os.path.join(
             out_dir,
-            f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble.csv"
+            f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_25.csv"
         )
         df_pred.to_csv(out_path_full, index=False)
         logger.info("Guardé scoring detallado en %s", out_path_full)
@@ -649,7 +649,7 @@ def main(argv=None):
         id_col = load_config(args.config).columns.id_column
         out_path_simple = os.path.join(
             out_dir,
-            f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble.csv"
+            f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_25.csv"
         )
         df_simple[[id_col, "Predicted"]].to_csv(out_path_simple, index=False)
         logger.info("Guardé scoring simple en %s", out_path_simple)
