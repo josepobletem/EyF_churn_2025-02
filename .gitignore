@@ -84,6 +84,7 @@ models/*.bin
 models/*.pt
 models/*.onnx
 
+models/*
 # Métricas y params generados automáticamente
 models/best_params.yaml
 models/final_metrics.yaml
@@ -136,4 +137,3 @@ Paso
 trainer
 Predict
 Entrenando
-models/
