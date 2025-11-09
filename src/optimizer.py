@@ -36,7 +36,7 @@ class ColumnsConfig(BaseModel):
         "clase_ternaria",
         description="Columna target multiclase original (BAJA+1 / BAJA+2 / CONTINUA)"
     )
-
+    
     # AHORA: elegimos directamente qué binaria queremos optimizar
     # Debe ser "clase_binaria1" o "clase_binaria2"
     binary_target_col: str = Field(
@@ -47,6 +47,7 @@ class ColumnsConfig(BaseModel):
             " - clase_binaria2 = 1 si BAJA+1 o BAJA+2, 0 si CONTINUA"
         )
     )
+    peso_col: str = "clase_peso"
 
     # nombre de la columna de pesos
     peso_col: str = Field(
@@ -542,8 +543,8 @@ def run_optuna_and_train():
     # 4. Guardar
     os.makedirs(train_cfg.models_dir, exist_ok=True)
 
-    params_path = os.path.join(train_cfg.models_dir, "best_params.yaml")
-    model_path = os.path.join(train_cfg.models_dir, "best_model.pkl")
+    params_path = os.path.join(train_cfg.models_dir, "best_params_v2.yaml")
+    model_path = os.path.join(train_cfg.models_dir, "best_model_v2.pkl")
 
     with open(params_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(

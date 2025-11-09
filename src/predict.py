@@ -246,8 +246,8 @@ def load_final_model_and_metadata(cfg: FullConfig):
     """
     train_cfg = cfg.train or TrainConfig()
 
-    model_path = os.path.join(train_cfg.models_dir, "final_model.pkl")
-    metrics_path = os.path.join(train_cfg.models_dir, "final_metrics.yaml")
+    model_path = os.path.join(train_cfg.models_dir, "final_model_v2.pkl")
+    metrics_path = os.path.join(train_cfg.models_dir, "final_metrics_v2.yaml")
 
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"No encontré el modelo final en {model_path}. Corré trainer.py primero.")
@@ -452,7 +452,7 @@ def main(argv=None):
     # CSV detallado con proba / rank
     out_path_full = os.path.join(
         out_dir,
-        f"pred_{result['mes']}_thr{args.threshold:.4f}.csv"
+        f"pred_{result['mes']}_thr{args.threshold:.4f}_best_param_v2.csv"
     )
     df_pred.to_csv(out_path_full, index=False)
     logger.info("Guardé scoring detallado en %s", out_path_full)
@@ -462,7 +462,7 @@ def main(argv=None):
     id_col = load_config(args.config).columns.id_column
     out_path_simple = os.path.join(
         out_dir,
-        f"pred_simple_{result['mes']}_thr{args.threshold:.4f}.csv"
+        f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_best_param_v2.csv"
     )
     df_simple[[id_col, "Predicted"]].to_csv(out_path_simple, index=False)
     logger.info("Guardé scoring simple en %s", out_path_simple)

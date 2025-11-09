@@ -109,14 +109,14 @@ def test_score_month_happy_path(tmp_path, monkeypatch):
 
     # 3. Guardamos un modelo dummy (final_model.pkl)
     dummy_model = DummyModel()
-    final_model_path = models_dir / "final_model.pkl"
+    final_model_path = models_dir / "final_model_v2.pkl"
     with open(final_model_path, "wb") as f:
         pickle.dump(dummy_model, f)
 
     # 4. Guardamos un final_metrics.yaml con feature_names
     # Estas son EXACTAMENTE las columnas que el modelo espera como input.
     feature_names_train = ["monto1", "monto2"]
-    final_metrics_path = models_dir / "final_metrics.yaml"
+    final_metrics_path = models_dir / "final_metrics_v2.yaml"
     with open(final_metrics_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
             {

@@ -6,7 +6,7 @@ paths:
   processed_dataset: "data/processed/competencia_01.csv"
 
   # dataset final con features listo para entrenar (output de feature_engineering.py)
-  feature_dataset: "data/processed/competencia_01_features.csv"
+  feature_dataset: "data/processed/competencia_01_features_new.csv"
 
 columns:
   # identificador único del cliente
@@ -42,4 +42,13 @@ features:
     - "sql/01_base_tables.sql"
     - "sql/02_feat_numeric.sql"
     - "sql/03_final_model.sql"
+    - "sql/04_risk_behavior_and_join.sql"
+    - "sql/05_behavioral_features.sql"
+
+train:
+  n_models: 10
+  seed: 12345
+  seeds: [101, 203, 307, 409, 503, 607, 701, 809, 907, 1009,
+          1103, 1201, 1301, 1409, 1501, 1601, 1709, 1801, 1901, 2003]
+  decision_threshold: 0.025
 

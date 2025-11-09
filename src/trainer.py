@@ -267,7 +267,7 @@ def train_final_model() -> dict:
     logger.info("Mes holdout reservado (no entrenado): %s", train_cfg.test_month)
 
     # 5. cargar hiperparámetros óptimos del optimizer
-    params_path = os.path.join(train_cfg.models_dir, "best_params.yaml")
+    params_path = os.path.join(train_cfg.models_dir, "best_params_v2.yaml")
     if not os.path.exists(params_path):
         raise FileNotFoundError(
             f"No encontré {params_path}. Corré primero optimizer.py."
@@ -317,14 +317,14 @@ def train_final_model() -> dict:
     # 8. guardar modelo final
     os.makedirs(train_cfg.models_dir, exist_ok=True)
 
-    final_model_path = os.path.join(train_cfg.models_dir, "final_model.pkl")
+    final_model_path = os.path.join(train_cfg.models_dir, "final_model_v2.pkl")
     with open(final_model_path, "wb") as f:
         pickle.dump(final_model, f)
 
     logger.info("💾 Modelo final guardado en %s", final_model_path)
 
     # 9. guardar métricas finales y metadata de entrenamiento
-    metrics_path = os.path.join(train_cfg.models_dir, "final_metrics.yaml")
+    metrics_path = os.path.join(train_cfg.models_dir, "final_metrics_v2.yaml")
     feature_names_train = list(X_train.columns)
     
     with open(metrics_path, "w", encoding="utf-8") as f:

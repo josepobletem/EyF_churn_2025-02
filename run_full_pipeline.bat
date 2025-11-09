@@ -2,23 +2,42 @@
 REM ================================
 REM run_full_pipeline.bat
 REM ================================
-REM Comportamiento similar al bash:
-REM - Activa el entorno virtual .venv
-REM - Ejecuta los pasos del pipeline
-REM - Se detiene si hay error
+REM Flags soportados:
+REM   --ensemble            -> usa src.trainer_ensemble_and_predict (entrena y/o predice)
+REM   --mes=YYYYMM          -> override del mes a predecir (ej: --mes=202106)
+REM   --threshold=0.025     -> override del umbral (ej: --threshold=0.0025)
+REM   --train-only          -> con --ensemble: entrena y NO predice
+REM Ejemplos:
+REM   run_full_pipeline.bat --ensemble --mes=202106 --threshold=0.025
+REM   run_full_pipeline.bat --mes=202106                    (pipeline clásico)
+REM   run_full_pipeline.bat --ensemble --train-only         (solo entrenamiento ensamble)
 
-REM Hacer que cualquier error corte la ejecución
-REM (en batch usamos IF ERRORLEVEL después de cada paso)
+REM ---------------- Args parsing ----------------
+setlocal ENABLEDELAYEDEXPANSION
+set ENSEMBLE=0
+set TRAIN_ONLY=0
+set CUSTOM_MES=
+set CUSTOM_THRESHOLD=
 
-echo === [1/4] Activando entorno Python ===========================
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--ensemble" set ENSEMBLE=1& shift & goto parse_args
+if /I "%~1"=="--train-only" set TRAIN_ONLY=1& shift & goto parse_args
+for /f "tokens=1,2 delims==" %%A in ("%~1") do (
+  if /I "%%~A"=="--mes" set CUSTOM_MES=%%~B
+  if /I "%%~A"=="--threshold" set CUSTOM_THRESHOLD=%%~B
+)
+shift
+goto parse_args
+:args_done
 
-REM Detectar entorno virtual .venv
+REM ---------------- Entorno ----------------
+echo === [1/5] Activando entorno Python ===========================
 IF EXIST ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 ) ELSE (
     echo ⚠️ No se encontró el entorno virtual .venv.
     echo    Asegurate de crearlo antes de correr este script.
-    echo    Ejemplo:
     echo       python -m venv .venv
     echo       .venv\Scripts\activate.bat
     exit /b 1
@@ -30,9 +49,11 @@ IF ERRORLEVEL 1 (
     echo [ERROR] Python no responde. Abortando.
     exit /b 1
 )
-echo.
 
-echo === [2/4] Generando datasets ================================
+REM ---------------- Paso 2: Data prep / Features ----------------
+echo ==========================================================
+echo === [2/5] Generando datasets =============================
+echo ==========================================================
 echo -> Paso A: data_prep (target / clase_ternaria)
 echo python -m src.data_prep
 echo IF ERRORLEVEL 1 (
@@ -47,18 +68,49 @@ echo     echo [ERROR] Fallo en src.feature_engineering
 echo     exit /b 1
 echo )
 
-echo.
-echo === [3/4] Buscando hiperparámetros ==========================
-echo -> optimizer: Optuna / LightGBM, guarda best_params.yaml y best_model.pkl
+REM ---------------- Paso 3: Optimizer ----------------
+echo ==========================================================
+echo === [3/5] Buscando hiperparametros =======================
+echo ==========================================================
 echo python -m src.optimizer
 echo IF ERRORLEVEL 1 (
 echo     echo [ERROR] Fallo en src.optimizer
 echo     exit /b 1
 echo )
 
-echo.
-echo === [4/4] Entrenando modelo final ===========================
-echo -> trainer: reentrena con TODO el dataset de features usando best_params.yaml
+REM ---------------- Paso 4 y 5 combinados (solo ENSAMBLE) ----------------
+REM Si usás --ensemble y NO usás --train-only, haremos UNA sola llamada que entrena y predice.
+REM En modo clásico (sin --ensemble), se mantiene la lógica anterior (trainer + predict).
+
+REM Defaults de scoring (override por flags)
+set SCORE_MES=202106
+set SCORE_THRESHOLD=0.01
+if defined CUSTOM_MES set SCORE_MES=%CUSTOM_MES%
+if defined CUSTOM_THRESHOLD set SCORE_THRESHOLD=%CUSTOM_THRESHOLD%
+
+echo ==========================================================
+echo === [4/4] Entrenando ENSAMBLE (sin scoring) ==============
+echo ==========================================================
+echo python -m src.trainer_ensemble_and_predict --train
+echo IF ERRORLEVEL 1 (
+echo     echo [ERROR] Fallo en src.trainer_ensemble_and_predict --train
+echo     exit /b 1
+echo )
+
+echo ==========================================================
+echo === [4/4] Entrenar ENSAMBLE + Scoring en una llamada =====
+echo ==========================================================
+echo -> Entrenando y prediciendo mes %SCORE_MES% (thr %SCORE_THRESHOLD%)
+python -m src.trainer_ensemble_and_predict --train --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
+IF ERRORLEVEL 1 (
+    echo [ERROR] Fallo en src.trainer_ensemble_and_predict --train --mes %SCORE_MES%
+    exit /b 1
+)
+
+REM ===== Flujo clásico (trainer + predict) =====
+echo ==========================================================
+echo === [4/5] Entrenando modelo final (clásico) ==============
+echo ==========================================================
 echo python -m src.trainer
 echo IF ERRORLEVEL 1 (
 echo     echo [ERROR] Fallo en src.trainer
@@ -66,23 +118,17 @@ echo     exit /b 1
 echo )
 
 echo ==========================================================
-echo === [5/5] Scoring / Prediccion mensual ==================
+echo === [5/5] Scoring / Prediccion mensual (clásico) =========
 echo ==========================================================
-
-REM Ajusta estos parámetros si queres scorar otro mes / umbral
-set SCORE_MES=202106
-set SCORE_THRESHOLD=0.0039
-
 echo -> Predict mes %SCORE_MES% con threshold %SCORE_THRESHOLD%
-python -m src.predict --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
-IF ERRORLEVEL 1 (
-    echo [ERROR] Fallo en src.predict
-    exit /b 1
+echo n -m src.predict --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
+echo IF ERRORLEVEL 1 (
+echo     echo [ERROR] Fallo en src.predict
+echo     exit /b 1
+echo )
+
+
+ echo(
+ echo Pipeline completo OK
+ exit /b 0
 )
-echo.
-
-echo.
-echo Pipeline completo OK
-
-REM Fin normal
-exit /b 0

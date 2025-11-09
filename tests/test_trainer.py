@@ -149,7 +149,7 @@ def test_trainer_train_final_model(tmp_path, monkeypatch):
         "test_month": 202104,
     }
 
-    best_params_path = models_dir / "best_params.yaml"
+    best_params_path = models_dir / "best_params_v2.yaml"
     with open(best_params_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(fake_best_params_file, f, sort_keys=False, allow_unicode=True)
 
