@@ -134,3 +134,5 @@ optuna_checkpoints/
 optimizer
 Paso
 trainer
+Predict
+Entrenando
