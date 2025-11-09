@@ -1,50 +1,133 @@
 #!/usr/bin/env bash
+# ==========================================
+# run_full_pipeline.sh
+# ==========================================
+# Flags soportados:
+#   --ensemble            -> usa src.trainer_ensemble_and_predict (entrena y/o predice)
+#   --mes=YYYYMM          -> override del mes a predecir (ej: --mes=202106)
+#   --threshold=0.025     -> override del umbral (ej: --threshold=0.0025)
+#   --train-only          -> con --ensemble: sólo entrena (no predice)
+#   -h | --help           -> muestra ayuda
+#
+# Ejemplos:
+#   ./run_full_pipeline.sh --ensemble --mes=202106 --threshold=0.025
+#   ./run_full_pipeline.sh --mes=202106                    # pipeline clásico
+#   ./run_full_pipeline.sh --ensemble --train-only         # sólo entrenamiento ensamble
+#
+# Requiere un venv en .venv/ con Python y dependencias.
+
 set -euo pipefail
 
-echo "=== [1/4] Activando entorno Python ==========================="
+# ---------- helpers ----------
+usage() {
+  cat <<'EOF'
+Uso:
+  run_full_pipeline.sh [--ensemble] [--train-only] [--mes YYYYMM] [--threshold FLOAT]
 
-# Si vas a correr esto en una VM Linux:
-#   source .venv/bin/activate
-#
-# En Windows con Git Bash, lo más común es:
-#   source .venv/Scripts/activate
-#
-# Para que el script sea portable, vamos a detectar carpeta:
-if [ -d ".venv/bin" ]; then
-    # layout tipo Linux / WSL
-    source .venv/bin/activate
-elif [ -d ".venv/Scripts" ]; then
-    # layout típico Windows venv
-    source .venv/Scripts/activate
+Flags:
+  --ensemble            Usa el pipeline de ensamble (trainer_ensemble_and_predict)
+  --train-only          Con --ensemble: entrena sin hacer scoring
+  --mes=YYYYMM          Mes a puntuar (también admite "--mes YYYYMM")
+  --threshold=FLOAT     Umbral de decisión para scoring (también admite "--threshold FLOAT")
+  -h, --help            Muestra esta ayuda
+EOF
+}
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+# ---------- defaults ----------
+ENSEMBLE=0
+TRAIN_ONLY=0
+SCORE_MES="202106"
+SCORE_THRESHOLD="0.01"
+
+# ---------- parse args ----------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ensemble) ENSEMBLE=1; shift ;;
+    --train-only) TRAIN_ONLY=1; shift ;;
+    --mes=*)
+      SCORE_MES="${1#*=}"; shift ;;
+    --mes)
+      [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --mes"; exit 1; }
+      SCORE_MES="$2"; shift 2 ;;
+    --threshold=*)
+      SCORE_THRESHOLD="${1#*=}"; shift ;;
+    --threshold)
+      [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --threshold"; exit 1; }
+      SCORE_THRESHOLD="$2"; shift 2 ;;
+    -h|--help)
+      usage; exit 0 ;;
+    *)
+      echo "[ERROR] Flag desconocida: $1"
+      usage
+      exit 1 ;;
+  esac
+done
+
+# ---------- entorno ----------
+log "=== [1/5] Activando entorno Python ==========================="
+if [[ -f ".venv/bin/activate" ]]; then
+  # shellcheck disable=SC1091
+  source ".venv/bin/activate"
 else
-    echo "⚠️ No se encontró el entorno virtual .venv. Asegurate de crearlo antes de correr este script."
-    echo "   Ejemplo:"
-    echo "      python -m venv .venv"
-    echo "      source .venv/bin/activate   (Linux/WSL)"
-    echo "      .venv\\Scripts\\Activate.ps1 (PowerShell)"
-    exit 1
+  echo "⚠️  No se encontró el entorno virtual .venv."
+  echo "    Crealo antes de correr este script:"
+  echo "      python -m venv .venv"
+  echo "      source .venv/bin/activate"
+  exit 1
 fi
 
-echo "Python usado:"
-python --version
-echo ""
+log "Python usado:"
+python --version >/dev/null
 
-echo "=== [2/4] Generando datasets ================================"
-echo "-> Paso A: data_prep (target / clase_ternaria)"
+# ---------- Paso 2: Data prep / Features ----------
+log "=========================================================="
+log "=== [2/5] Generando datasets ============================="
+log "=========================================================="
+
+log "-> Paso A: data_prep (target / clase_ternaria)"
 python -m src.data_prep
 
-echo "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
+log "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
 python -m src.feature_engineering
 
-echo ""
-echo "=== [3/4] Buscando hiperparámetros =========================="
-echo "-> optimizer: Optuna / LightGBM, guarda best_params.yaml y best_model.pkl"
+# ---------- Paso 3: Optimizer ----------
+log "=========================================================="
+log "=== [3/5] Buscando hiperparametros ======================="
+log "=========================================================="
+
 python -m src.optimizer
 
-echo ""
-echo "=== [4/4] Entrenando modelo final ==========================="
-echo "-> trainer: reentrena con TODO el dataset de features usando best_params.yaml"
-python -m src.trainer
+# ---------- Paso 4/5: Ensamble o clásico ----------
+if [[ "$ENSEMBLE" -eq 1 ]]; then
+  if [[ "$TRAIN_ONLY" -eq 1 ]]; then
+    log "=========================================================="
+    log "=== [4/4] Entrenando ENSAMBLE (sin scoring) =============="
+    log "=========================================================="
+    python -m src.trainer_ensemble_and_predict --train
+  else
+    log "=========================================================="
+    log "=== [4/4] Entrenar ENSAMBLE + Scoring en una llamada ====="
+    log "=========================================================="
+    log "-> Entrenando y prediciendo mes ${SCORE_MES} (thr ${SCORE_THRESHOLD})"
+    python -m src.trainer_ensemble_and_predict --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+  fi
+else
+  # Flujo clásico
+  log "=========================================================="
+  log "=== [4/5] Entrenando modelo final (clásico) =============="
+  log "=========================================================="
+  python -m src.trainer
 
-echo ""
-echo "🏁 Pipeline completo OK"
+  log "=========================================================="
+  log "=== [5/5] Scoring / Prediccion mensual (clásico) ========="
+  log "=========================================================="
+  log "-> Predict mes ${SCORE_MES} con threshold ${SCORE_THRESHOLD}"
+  python -m src.predict --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+fi
+
+echo
+log "Pipeline completo OK"

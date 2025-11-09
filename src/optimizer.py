@@ -64,7 +64,10 @@ class TrainConfig(BaseModel):
 
     # split temporal
     train_months: list[int] = Field(
-        default_factory=lambda: [202101, 202102, 202103],
+        default_factory=lambda: [201903, 201904, 201905, 201906, 201907, 201908, 201909,
+                                 201910, 201911, 201912,
+                                 202003, 202004, 202005, 202006, 202007, 202008, 202009,
+                                 202010, 202011, 202012, 202101, 202102, 202103],
         description="Lista de foto_mes que se usan para train/CV"
     )
     test_month: int = Field(
@@ -74,7 +77,7 @@ class TrainConfig(BaseModel):
 
     # columnas a dropear por fuga/leak/etc
     drop_cols: list[str] = Field(
-        default_factory=lambda: ["lag_3_ctrx_quarter"],
+        default_factory=lambda: ["lag_3_ctrx_quarter","mprestamos_personales","cprestamos_personales"],
         description="Columnas a eliminar antes de entrenar"
     )
 
@@ -82,11 +85,11 @@ class TrainConfig(BaseModel):
     objective: str = Field("binary", description="LightGBM objective")
     boosting_type: str = Field("gbdt", description="gbdt | dart | goss")
     n_estimators: int = Field(
-        1000,
+        500,
         description="num_boost_round máximo en cv"
     )
     nfold: int = Field(
-        5,
+        15,
         description="k-fold CV estratificado"
     )
     seed: int = Field(
@@ -94,7 +97,7 @@ class TrainConfig(BaseModel):
         description="semilla reproducible"
     )
     n_trials: int = Field(
-        50,
+        2,
         description="cantidad de trials Optuna"
     )
 
@@ -511,7 +514,7 @@ def run_optuna_and_train():
     
     study = optuna.create_study(
         direction="maximize",
-        study_name="lgbm_tpe_inteligente_3trial",
+        study_name="lgbm_tpe_inteligente_2trial_comp2",
         storage=storage_url,
         load_if_exists=True,
         )
@@ -543,8 +546,8 @@ def run_optuna_and_train():
     # 4. Guardar
     os.makedirs(train_cfg.models_dir, exist_ok=True)
 
-    params_path = os.path.join(train_cfg.models_dir, "best_params_v2.yaml")
-    model_path = os.path.join(train_cfg.models_dir, "best_model_v2.pkl")
+    params_path = os.path.join(train_cfg.models_dir, "best_params_comp2.yaml")
+    model_path = os.path.join(train_cfg.models_dir, "best_model_comp2.pkl")
 
     with open(params_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(

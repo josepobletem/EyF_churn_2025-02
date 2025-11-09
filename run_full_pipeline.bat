@@ -72,11 +72,11 @@ REM ---------------- Paso 3: Optimizer ----------------
 echo ==========================================================
 echo === [3/5] Buscando hiperparametros =======================
 echo ==========================================================
-echo python -m src.optimizer
-echo IF ERRORLEVEL 1 (
-echo     echo [ERROR] Fallo en src.optimizer
-echo     exit /b 1
-echo )
+python -m src.optimizer
+IF ERRORLEVEL 1 (
+    echo [ERROR] Fallo en src.optimizer
+    exit /b 1
+)
 
 REM ---------------- Paso 4 y 5 combinados (solo ENSAMBLE) ----------------
 REM Si usás --ensemble y NO usás --train-only, haremos UNA sola llamada que entrena y predice.
@@ -101,11 +101,11 @@ echo ==========================================================
 echo === [4/4] Entrenar ENSAMBLE + Scoring en una llamada =====
 echo ==========================================================
 echo -> Entrenando y prediciendo mes %SCORE_MES% (thr %SCORE_THRESHOLD%)
-python -m src.trainer_ensemble_and_predict --train --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
-IF ERRORLEVEL 1 (
-    echo [ERROR] Fallo en src.trainer_ensemble_and_predict --train --mes %SCORE_MES%
-    exit /b 1
-)
+echo python -m src.trainer_ensemble_and_predict --train --mes %SCORE_MES% --threshold %SCORE_THRESHOLD%
+echo IF ERRORLEVEL 1 (
+echo     echo [ERROR] Fallo en src.trainer_ensemble_and_predict --train --mes %SCORE_MES%
+echo     exit /b 1
+echo )
 
 REM ===== Flujo clásico (trainer + predict) =====
 echo ==========================================================

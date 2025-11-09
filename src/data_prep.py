@@ -263,8 +263,8 @@ def run_data_stage() -> str:
     # ------------------------------------------------------------------
     logger.info("Creando conexión DuckDB en memoria y registrando tabla intermedia...")
     con = duckdb.connect(database=":memory:")
-    con.register("competencia_01_crudo_enriq", df_std)
-    logger.info("Tabla 'competencia_01_crudo_enriq' registrada en DuckDB.")
+    con.register("competencia_02_crudo_enriq", df_std)
+    logger.info("Tabla 'competencia_02_crudo_enriq' registrada en DuckDB.")
 
     # ------------------------------------------------------------------
     # 6. DuckDB SQL: derive churn status
@@ -278,19 +278,19 @@ def run_data_stage() -> str:
                 foto_mes,
                 foto_mes_t1,
                 foto_mes_t2
-            FROM competencia_01_crudo_enriq
+            FROM competencia_02_crudo_enriq
         ),
         t1 AS (
             SELECT DISTINCT
                 numero_de_cliente,
                 foto_mes AS foto_mes_t1_real
-            FROM competencia_01_crudo_enriq
+            FROM competencia_02_crudo_enriq
         ),
         t2 AS (
             SELECT DISTINCT
                 numero_de_cliente,
                 foto_mes AS foto_mes_t2_real
-            FROM competencia_01_crudo_enriq
+            FROM competencia_02_crudo_enriq
         ),
         marcado AS (
             SELECT

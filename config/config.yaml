@@ -1,13 +1,15 @@
 paths:
   # dataset crudo original (sin target todavía)
-  raw_dataset: "data/raw/competencia_01_crudo.csv"
+  #raw_dataset: "data/raw/competencia_01_crudo.csv"
+  raw_dataset: "data/raw/competencia_02_crudo.csv"
 
   # dataset con target churn/class (output de data_prep.py)
-  processed_dataset: "data/processed/competencia_01.csv"
+  #processed_dataset: "data/processed/competencia_01.csv"
+  processed_dataset: "data/processed/competencia_02.csv"
 
   # dataset final con features listo para entrenar (output de feature_engineering.py)
-  feature_dataset: "data/processed/competencia_01_features_new.csv"
-
+  #feature_dataset: "data/processed/competencia_01_features_new.csv"
+  feature_dataset: "data/processed/competencia_02_features_new.csv"
 columns:
   # identificador único del cliente
   id_column: "numero_de_cliente"
