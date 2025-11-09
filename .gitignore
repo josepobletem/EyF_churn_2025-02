@@ -56,6 +56,9 @@ data/**/*.zip
 data/**/*.gz
 data/**/*.bz2
 data/**/*.xz
+data/**/raw/
+data/**/processed/
+data
 
 # Evitar que se suban dumps intermedios que a veces quedan sueltos en raíz
 *.csv
