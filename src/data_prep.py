@@ -362,7 +362,7 @@ def run_data_stage() -> str:
     # ------------------------------------------------------------------
     logger.info("Guardando dataset final en %s ...", out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    df_final_out.to_csv(out_path, index=False)
+    df_final_out.to_parquet(out_path, index=False)
     logger.info("Guardado OK ✅")
 
     logger.info("Primeras filas del dataset final listo para modelar:")

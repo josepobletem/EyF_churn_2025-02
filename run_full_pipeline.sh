@@ -89,10 +89,10 @@ log "=== [2/5] Generando datasets ============================="
 log "=========================================================="
 
 log "-> Paso A: data_prep (target / clase_ternaria)"
-python -m src.data_prep
+log python -m src.data_prep
 
 log "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
-python -m src.feature_engineering
+log python -m src.feature_engineering
 
 # ---------- Paso 3: Optimizer ----------
 log "=========================================================="
@@ -102,6 +102,7 @@ log "=========================================================="
 python -m src.optimizer
 
 # ---------- Paso 4/5: Ensamble o clásico ----------
+: <<'__DISABLED__'
 if [[ "$ENSEMBLE" -eq 1 ]]; then
   if [[ "$TRAIN_ONLY" -eq 1 ]]; then
     log "=========================================================="
@@ -128,6 +129,7 @@ else
   log "-> Predict mes ${SCORE_MES} con threshold ${SCORE_THRESHOLD}"
   python -m src.predict --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
 fi
+__DISABLED__
 
 echo
-log "Pipeline completo OK"
+log "OK: ejecutados data_prep, feature_engineering y optimizer (resto comentado)."

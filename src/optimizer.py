@@ -9,6 +9,65 @@ import optuna
 from pydantic import BaseModel, Field, ValidationError
 from pathlib import Path
 
+import fsspec
+# ======================
+# Helpers GCS / local
+# ======================
+
+# --- helpers GCS robustos (añade arriba del archivo) ---
+import os, io, pickle, yaml, fsspec, subprocess, tempfile
+
+def _is_gcs(path: str) -> bool:
+    return str(path).startswith("gs://")
+
+def _join(models_dir: str, *parts: str) -> str:
+    if _is_gcs(models_dir):
+        return "/".join([models_dir.rstrip("/")] + [p.strip("/") for p in parts])
+    return os.path.join(models_dir, *parts)
+
+def _write_text(path: str, text: str):
+    if _is_gcs(path):
+        try:
+            with fsspec.open(path, "w", **{"token": "cloud"}) as f:
+                f.write(text)
+            return
+        except Exception as e:
+            # fallback con gsutil
+            _gsutil_fallback_write(path, text.encode("utf-8"))
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+def _write_bytes(path: str, data: bytes):
+    if _is_gcs(path):
+        try:
+            with fsspec.open(path, "wb", **{"token": "cloud"}) as f:
+                f.write(data)
+            return
+        except Exception as e:
+            # fallback con gsutil
+            _gsutil_fallback_write(path, data)
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+
+def _gsutil_fallback_write(gcs_path: str, data: bytes):
+    # escribe a /dev/shm (RAM) y sube con gsutil cp
+    os.makedirs("/dev/shm", exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir="/dev/shm", delete=False) as tmp:
+        tmp.write(data)
+        tmp.flush()
+        tmp_path = tmp.name
+    try:
+        subprocess.run(["gsutil", "-q", "cp", tmp_path, gcs_path], check=True)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
 # ======================
 # logging
 # ======================
@@ -58,16 +117,17 @@ class ColumnsConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     models_dir: str = Field(
-        "models",
+        "gs://jose_poblete_bukito3/eyf/models",
         description="Carpeta donde guardar mejor modelo y parámetros"
     )
 
     # split temporal
     train_months: list[int] = Field(
-        default_factory=lambda: [201903, 201904, 201905, 201906, 201907, 201908, 201909,
+        default_factory=lambda: [#201809, 201810, 201811, 201812,
+                                 #201901, 201902, 201903, 201904, 201905, 201906, 201907, 201908, 201909, 
                                  201910, 201911, 201912,
-                                 202003, 202004, 202005, 202006, 202007, 202008, 202009,
-                                 202010, 202011, 202012, 202101, 202102, 202103],
+                                 202001, 202002, 202003, 202004, 202005, 202006, 202007, 202008, 202009, 202010, 202011, 202012,
+                                 202101, 202102, 202103],
         description="Lista de foto_mes que se usan para train/CV"
     )
     test_month: int = Field(
@@ -89,7 +149,7 @@ class TrainConfig(BaseModel):
         description="num_boost_round máximo en cv"
     )
     nfold: int = Field(
-        15,
+        5,
         description="k-fold CV estratificado"
     )
     seed: int = Field(
@@ -97,7 +157,7 @@ class TrainConfig(BaseModel):
         description="semilla reproducible"
     )
     n_trials: int = Field(
-        2,
+        30,
         description="cantidad de trials Optuna"
     )
 
@@ -472,6 +532,13 @@ def train_final_model(df_full: pd.DataFrame, cfg: FullConfig, train_cfg: TrainCo
 
     return final_model, best_iteration, best_gan_mean, best_gan_stdv, feature_names
 
+
+def path_exists(path: str) -> bool:
+    if str(path).startswith("gs://"):
+        fs = fsspec.filesystem("gcs", token="cloud")  # usa tus ADC
+        return fs.exists(path)
+    return os.path.exists(path)
+
 # ======================
 # MAIN
 # ======================
@@ -482,10 +549,10 @@ def run_optuna_and_train():
     train_cfg = cfg.train or TrainConfig()
 
     feature_path = cfg.paths.feature_dataset
-    if not os.path.exists(feature_path):
+    if not path_exists(feature_path):
         raise FileNotFoundError(f"No encontré el dataset de features {feature_path}")
 
-    df = pd.read_csv(feature_path)
+    df = pd.read_parquet(feature_path)
 
     # asegurarnos de tener clase_binaria1, clase_binaria2 y clase_peso
     df = ensure_binarias_y_peso(df, cfg.columns, train_cfg)
@@ -514,7 +581,7 @@ def run_optuna_and_train():
     
     study = optuna.create_study(
         direction="maximize",
-        study_name="lgbm_tpe_inteligente_2trial_comp2",
+        study_name="lgbm_tpe_inteligente_20trial_comp2_vm",
         storage=storage_url,
         load_if_exists=True,
         )
@@ -544,53 +611,54 @@ def run_optuna_and_train():
     )
 
     # 4. Guardar
-    os.makedirs(train_cfg.models_dir, exist_ok=True)
+    models_dir = train_cfg.models_dir  # puede ser "models" o "gs://jose_poblete_bukito3/eyf/models"
+    params_path = _join(models_dir, "best_params_comp2.yaml")
+    model_path  = _join(models_dir, "best_model_comp2.pkl")
 
-    params_path = os.path.join(train_cfg.models_dir, "best_params_comp2.yaml")
-    model_path = os.path.join(train_cfg.models_dir, "best_model_comp2.pkl")
+    # YAML
+    params_yaml = yaml.safe_dump(
+        {
+            "best_params": best_params_full,
+            "best_iteration": int(best_iteration),
+            "gan_eval_best_cv": float(best_gan_mean),
+            "gan_eval_stdv_cv": (None if best_gan_stdv is None else float(best_gan_stdv)),
+            "best_gan_eval_from_optuna": float(best_value),
 
-    with open(params_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-            {
-                "best_params": best_params_full,
-                "best_iteration": int(best_iteration),
-                "gan_eval_best_cv": float(best_gan_mean),
-                "gan_eval_stdv_cv": (None if best_gan_stdv is None else float(best_gan_stdv)),
-                "best_gan_eval_from_optuna": float(best_value),
+            "train_months": train_cfg.train_months,
+            "test_month": int(train_cfg.test_month),
+            "drop_cols": train_cfg.drop_cols,
 
-                "train_months": train_cfg.train_months,
-                "test_month": int(train_cfg.test_month),
-                "drop_cols": train_cfg.drop_cols,
+            "ganancia_acierto": float(train_cfg.ganancia_acierto),
+            "costo_estimulo": float(train_cfg.costo_estimulo),
 
-                "ganancia_acierto": float(train_cfg.ganancia_acierto),
-                "costo_estimulo": float(train_cfg.costo_estimulo),
+            "weight_baja2": float(train_cfg.weight_baja2),
+            "weight_baja1": float(train_cfg.weight_baja1),
+            "weight_continua": float(train_cfg.weight_continua),
 
-                "weight_baja2": float(train_cfg.weight_baja2),
-                "weight_baja1": float(train_cfg.weight_baja1),
-                "weight_continua": float(train_cfg.weight_continua),
+            "binary_target_col": cfg.columns.binary_target_col,
+            "target_column_full": cfg.columns.target_column_full,
+            "id_column": cfg.columns.id_column,
+            "period_column": cfg.columns.period_column,
 
-                "binary_target_col": cfg.columns.binary_target_col,
-                "target_column_full": cfg.columns.target_column_full,
-                "id_column": cfg.columns.id_column,
-                "period_column": cfg.columns.period_column,
+            "feature_names": feature_names,
 
-                "feature_names": feature_names,
+            "n_trials": train_cfg.n_trials,
+            "n_estimators_max": train_cfg.n_estimators,
+            "nfold": train_cfg.nfold,
+            "seed": train_cfg.seed,
+        },
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    _write_text(params_path, params_yaml)
 
-                "n_trials": train_cfg.n_trials,
-                "n_estimators_max": train_cfg.n_estimators,
-                "nfold": train_cfg.nfold,
-                "seed": train_cfg.seed,
-            },
-            f,
-            sort_keys=False,
-            allow_unicode=True,
-        )
+    # Pickle
+    buf = io.BytesIO()
+    pickle.dump(final_model, buf)
+    _write_bytes(model_path, buf.getvalue())
 
-    with open(model_path, "wb") as f:
-        pickle.dump(final_model, f)
-
-    logger.info("💾 Guardé params/ganancia en %s", params_path)
-    logger.info("💾 Guardé el modelo final en %s", model_path)
+    logger.info("💾 Guardé params en %s", params_path)
+    logger.info("💾 Guardé modelo en %s", model_path)
 
     return {
         "best_params": best_params_full,

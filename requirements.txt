@@ -10,3 +10,6 @@ pydantic
 black
 isort
 pylint
+pyarrow
+fastparquet
+gcsfs

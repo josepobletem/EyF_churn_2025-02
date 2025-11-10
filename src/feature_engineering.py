@@ -23,7 +23,10 @@ import pandas as pd
 import duckdb
 import yaml
 from pydantic import BaseModel, Field, ValidationError
+import fsspec
 
+
+PARQUET_ENGINE = "pyarrow"
 
 # -------------------------------------------------
 # Logging
@@ -168,6 +171,17 @@ def _read_sql_file(sql_path: str) -> str:
 
     return sql_text
 
+def _is_gcs(path: str) -> bool:
+    return str(path).startswith("gs://")
+
+def _storage_opts(path: str) -> dict | None:
+    return {"token": "cloud"} if _is_gcs(path) else None
+
+def _path_exists(path: str) -> bool:
+    if _is_gcs(path):
+        fs = fsspec.filesystem("gcs", token="cloud")
+        return fs.exists(path)
+    return os.path.exists(path)
 
 def run_feature_engineering() -> str:
     """
@@ -222,13 +236,19 @@ def run_feature_engineering() -> str:
     logger.info("Columnas clave -> id: %s | periodo: %s | target: %s", id_col, period_col, target_col)
 
     # 2. Cargar dataset base (el que ya tiene clase_ternaria)
-    if not os.path.exists(processed_path):
+    if not _path_exists(processed_path):
         logger.error("No se encontró el dataset procesado: %s", processed_path)
-        raise FileNotFoundError(
-            f"No encontré el archivo procesado (con target) {processed_path}"
-        )
+        raise FileNotFoundError(f"No encontré el archivo procesado (con target) {processed_path}")
 
-    df_base = pd.read_csv(processed_path)
+    # Soporta parquet/csv + local/GCS
+    storage_opts = _storage_opts(processed_path)
+    if str(processed_path).endswith(".parquet"):
+        df_base = pd.read_parquet(processed_path, engine=PARQUET_ENGINE, storage_options=storage_opts)
+    elif str(processed_path).endswith(".csv") or str(processed_path).endswith(".csv.gz"):
+        df_base = pd.read_csv(processed_path, storage_options=storage_opts)
+    else:
+        raise ValueError(f"Formato no soportado para processed_dataset: {processed_path}")
+
     logger.info("Dataset base leído. Shape: %s", (df_base.shape,))
     logger.debug("Primeras filas base:\n%s", df_base.head())
 
@@ -291,7 +311,7 @@ def run_feature_engineering() -> str:
 
     # 6. Guardar resultado final enriquecido
     os.makedirs(os.path.dirname(feature_out_path), exist_ok=True)
-    last_result_df.to_csv(feature_out_path, index=False)
+    last_result_df.to_parquet(feature_out_path, index=False)
     logger.info("Features finales guardadas en %s ✅", feature_out_path)
 
     return feature_out_path
