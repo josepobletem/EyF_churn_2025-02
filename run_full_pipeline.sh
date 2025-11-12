@@ -38,7 +38,7 @@ log() {
 }
 
 # ---------- defaults ----------
-ENSEMBLE=0
+ENSEMBLE=1
 TRAIN_ONLY=0
 SCORE_MES="202106"
 SCORE_THRESHOLD="0.01"
@@ -99,37 +99,37 @@ log "=========================================================="
 log "=== [3/5] Buscando hiperparametros ======================="
 log "=========================================================="
 
-python -m src.optimizer
+log python -m src.optimizer
 
 # ---------- Paso 4/5: Ensamble o clásico ----------
-: <<'__DISABLED__'
+
 if [[ "$ENSEMBLE" -eq 1 ]]; then
   if [[ "$TRAIN_ONLY" -eq 1 ]]; then
     log "=========================================================="
     log "=== [4/4] Entrenando ENSAMBLE (sin scoring) =============="
     log "=========================================================="
-    python -m src.trainer_ensemble_and_predict --train
+    log python -m src.trainer_ensemble_and_predict --train
   else
     log "=========================================================="
     log "=== [4/4] Entrenar ENSAMBLE + Scoring en una llamada ====="
     log "=========================================================="
     log "-> Entrenando y prediciendo mes ${SCORE_MES} (thr ${SCORE_THRESHOLD})"
-    python -m src.trainer_ensemble_and_predict --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+    log python -m src.trainer_ensemble_and_predict --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+    python -m src.trainer_ensemble_and_predict_gcp --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
   fi
 else
   # Flujo clásico
   log "=========================================================="
   log "=== [4/5] Entrenando modelo final (clásico) =============="
   log "=========================================================="
-  python -m src.trainer
+  log python -m src.trainer
 
   log "=========================================================="
   log "=== [5/5] Scoring / Prediccion mensual (clásico) ========="
   log "=========================================================="
   log "-> Predict mes ${SCORE_MES} con threshold ${SCORE_THRESHOLD}"
-  python -m src.predict --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+  log python -m src.predict --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
 fi
-__DISABLED__
 
 echo
 log "OK: ejecutados data_prep, feature_engineering y optimizer (resto comentado)."
