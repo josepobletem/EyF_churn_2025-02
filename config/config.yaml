@@ -25,6 +25,7 @@ columns:
   # target para el optimizador
   binary_target_col: "clase_binaria2"
   peso_col: "clase_peso"
+  binary_target_gan: "clase_binaria1"
 
 logic:
   # Documentación de negocio de churn

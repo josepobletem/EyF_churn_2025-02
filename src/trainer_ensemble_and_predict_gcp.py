@@ -485,7 +485,7 @@ def score_month_ensemble(
     proba_mean = np.clip(proba_mean, 1e-15, 1 - 1e-15)
     pred_flag = (proba_mean >= threshold).astype(int)
 
-    bin_col = cfg.columns.binary_target_col
+    bin_col = cfg.columns.binary_target_gan
     if bin_col in info_df.columns:
         y_true_bin = info_df[bin_col].astype(int).to_numpy()
     else:
