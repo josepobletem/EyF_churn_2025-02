@@ -170,6 +170,12 @@ class ColumnsConfig(BaseModel):
             "clase_binaria2 = 1 si BAJA+1 o BAJA+2, 0 si CONTINUA"
         )
     )
+
+    binary_target_gan: str = Field(
+        "clase_binaria1",
+        description="Target multiclase original (BAJA+1 / BAJA+2 / CONTINUA)"
+    )
+
     peso_col: str = Field(
         "clase_peso",
         description="Columna de pesos que se usa como weight"
@@ -182,7 +188,7 @@ class TrainConfig(BaseModel):
                                  #201901, 201902, 201903, 201904, 201905, 201906, 201907, 201908, 201909, 
                                  201910, 201911, 201912,
                                  202001, 202002, 202003, 202004, 202005, 202006, 202007, 202008, 202009, 202010, 202011, 202012,
-                                 202101, 202102, 202103, 202104]
+                                 202101, 202102]#, 202103, 202104]
     )
     test_month: int = Field(202104)
     drop_cols: List[str] = Field(default_factory=lambda: ["lag_3_ctrx_quarter"])
@@ -400,7 +406,7 @@ def build_scoring_matrix(
     if df_mes.empty:
         raise ValueError(f"No hay filas para el mes {month_to_score} en el dataset de features")
 
-    cols_info = [c for c in [id_col, per_col, bin2] if c in df_mes.columns]
+    cols_info = [c for c in [id_col, per_col, bin1, bin2] if c in df_mes.columns]
     info_df = df_mes[cols_info].reset_index(drop=True)
 
     block_cols = {id_col, per_col, tgt_full, peso_col, bin1, bin2}
@@ -457,11 +463,21 @@ def score_month_ensemble(
         raise FileNotFoundError(f"No encontré {feature_path}")
     df_full = _read_parquet(feature_path)
 
+    # recrear columnas derivadas por consistencia con entrenamiento
     df_full = ensure_binarias_y_peso(df_full, cfg.columns, train_cfg)
-    X_score, info_df, _ = build_scoring_matrix(df_full, cfg, month_to_score=month_to_score)
 
-    logger.info("Mes %s -> scoring rows: %s, features: %s", month_to_score, X_score.shape[0], X_score.shape[1])
+    X_score, info_df, _ = build_scoring_matrix(
+        df_full,
+        cfg,
+        month_to_score=month_to_score
+    )
 
+    logger.info(
+        "Mes %s -> scoring rows: %s, features: %s",
+        month_to_score, X_score.shape[0], X_score.shape[1]
+    )
+
+    # cargar ensamble y metadata
     models, meta_yaml, _ = load_ensemble_models_and_meta(cfg)
     logger.info("Modelos cargados del ensamble: %d", len(models))
 
@@ -469,11 +485,13 @@ def score_month_ensemble(
     if feature_names_train is None:
         raise ValueError("final_ensemble_metadata.yaml no contiene 'feature_names'.")
 
+    # Alinear columnas exactamente como en entrenamiento
     for col in feature_names_train:
         if col not in X_score.columns:
             X_score[col] = 0.0
     X_score = X_score[feature_names_train]
 
+    # predecir con cada modelo y promediar
     probas = []
     for i, model in enumerate(models, start=1):
         p = model.predict(X_score)
@@ -485,35 +503,67 @@ def score_month_ensemble(
     proba_mean = np.clip(proba_mean, 1e-15, 1 - 1e-15)
     pred_flag = (proba_mean >= threshold).astype(int)
 
-    bin_col = cfg.columns.binary_target_gan
-    if bin_col in info_df.columns:
-        y_true_bin = info_df[bin_col].astype(int).to_numpy()
-    else:
-        y_true_bin = np.zeros(len(pred_flag), dtype=int)
+    id_col = cfg.columns.id_column      # "numero_de_cliente"
+    per_col = cfg.columns.period_column # "foto_mes"
 
-    gan_total = calcular_ganancia(
-        y_true_bin=y_true_bin,
-        y_pred_bin=pred_flag,
-        ganancia_acierto=getattr(train_cfg, "ganancia_acierto", 780000.0),
-        costo_estimulo=getattr(train_cfg, "costo_estimulo", 20000.0),
-    )
-
-    id_col = cfg.columns.id_column
-    per_col = cfg.columns.period_column
-
+    # -------------------------
+    # Dataframes de salida
+    # -------------------------
     out = pd.DataFrame({
         id_col: info_df[id_col].to_numpy(),
         per_col: info_df[per_col].to_numpy(),
         "proba_modelo": proba_mean,
         "pred_flag": pred_flag,
     })
-    out["rank_desc"] = out["proba_modelo"].rank(ascending=False, method="first").astype(int)
+    out["rank_desc"] = out["proba_modelo"].rank(
+        ascending=False, method="first"
+    ).astype(int)
     out = out.sort_values("proba_modelo", ascending=False).reset_index(drop=True)
 
     df_simple = pd.DataFrame({
         id_col: out[id_col],
         "Predicted": out["pred_flag"].astype(int),
     })
+
+    # -------------------------
+    # 💰 Cálculo de ganancia CONSISTENTE
+    # -------------------------
+    # usamos la misma binaria que en optimizer/trainer
+    bin_col = cfg.columns.binary_target_gan   # p.ej. "clase_binaria2"
+
+    if bin_col in info_df.columns:
+        # 1) verdad terreno por cliente (id + y_real)
+        df_truth = info_df[[id_col, bin_col]].copy()
+        df_truth[bin_col] = df_truth[bin_col].astype(int)
+
+        # 2) predicción por cliente (id + y_pred_flag)
+        df_pred_flags = out[[id_col, "pred_flag"]].copy()
+        df_pred_flags["pred_flag"] = df_pred_flags["pred_flag"].astype(int)
+
+        # 3) merge por numero_de_cliente → asegura alineación
+        df_merge = df_truth.merge(df_pred_flags, on=id_col, how="inner")
+
+        # opcional: ordenar por id para tener orden determinista
+        df_merge = df_merge.sort_values(id_col).reset_index(drop=True)
+
+        # 4) vectores alineados (misma fila = mismo cliente)
+        y_true_bin = df_merge[bin_col].to_numpy()
+        y_pred_bin = df_merge["pred_flag"].to_numpy()
+
+        # 5) ganancia
+        gan_total = calcular_ganancia(
+            y_true_bin=y_true_bin,
+            y_pred_bin=y_pred_bin,
+            ganancia_acierto=getattr(train_cfg, "ganancia_acierto", 780000.0),
+            costo_estimulo=getattr(train_cfg, "costo_estimulo", 20000.0),
+        )
+    else:
+        logger.warning(
+            "No encontré la columna binaria '%s' en info_df. "
+            "Ganancia se setea a 0. Solo se generarán predicciones.",
+            bin_col,
+        )
+        gan_total = 0.0
 
     return {
         "df_pred": out,
@@ -572,11 +622,11 @@ def main(argv=None):
         if _is_gcs(pred_dir):
             out_path_full = _join(
                 pred_dir,
-                f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}.csv"
+                f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan.csv"
             )
             out_path_simple = _join(
                 pred_dir,
-                f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}.csv"
+                f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan.csv"
             )
             _write_csv_df(df_pred, out_path_full)
             _write_csv_df(df_simple[[load_config(args.config).columns.id_column, "Predicted"]], out_path_simple)

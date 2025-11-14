@@ -40,8 +40,8 @@ log() {
 # ---------- defaults ----------
 ENSEMBLE=1
 TRAIN_ONLY=0
-SCORE_MES="202106"
-SCORE_THRESHOLD="0.01"
+SCORE_MES="202104"
+SCORE_THRESHOLD="0.015"
 
 # ---------- parse args ----------
 while [[ $# -gt 0 ]]; do
