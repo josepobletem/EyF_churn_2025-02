@@ -13,3 +13,4 @@ pylint
 pyarrow
 fastparquet
 gcsfs
+polars

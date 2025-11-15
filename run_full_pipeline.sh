@@ -115,7 +115,7 @@ if [[ "$ENSEMBLE" -eq 1 ]]; then
     log "=========================================================="
     log "-> Entrenando y prediciendo mes ${SCORE_MES} (thr ${SCORE_THRESHOLD})"
     log python -m src.trainer_ensemble_and_predict --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
-    python -m src.trainer_ensemble_and_predict_gcp --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
+    log python -m src.trainer_ensemble_and_predict_gcp --train --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
   fi
 else
   # Flujo clásico
@@ -130,6 +130,13 @@ else
   log "-> Predict mes ${SCORE_MES} con threshold ${SCORE_THRESHOLD}"
   log python -m src.predict --mes "${SCORE_MES}" --threshold "${SCORE_THRESHOLD}"
 fi
+
+# ---------- Paso 6: Modelo zLightGBM con canaritos ----------
+log "=========================================================="
+log "=== [6/6] Entrenando modelo zLightGBM con canaritos ======="
+log "=========================================================="
+
+python -m src.trainer_zlgbm_canaritos
 
 echo
 log "OK: ejecutados data_prep, feature_engineering y optimizer (resto comentado)."

@@ -51,10 +51,27 @@ features:
     - "sql/05_behavioral_features.sql"
 
 train:
-  n_models: 20
+  # ya los tenías (pueden quedar aunque no se usen aquí)
+  n_models: 1
   seed: 12345
-  seeds: [101, 203, 307, 409, 503, 607, 701, 809, 907, 1009,
+  seeds: [464939, 203, 307, 409, 503, 607, 701, 809, 907, 1009,
           1103, 1201, 1301, 1409, 1501, 1601, 1709, 1801, 1901, 2003,
-          811157, 502717, 782911, 464939, 213713]
+          811157, 502717, 782911, 101, 213713]
   decision_threshold: 0.025
 
+  # ⚙️ NUEVO PARA ESTE SCRIPT
+  models_dir: "gs://jose_poblete_bukito3/eyf/zlgbm"  # donde se guardan modelo y árboles
+  kaggle_dir: "gs://jose_poblete_bukito3/eyf/kaggle" # donde se guardan archivos Kaggle
+
+  train_months: [201910, 201911, 201912,
+                 202001, 202002, 202003, 202004, 
+                 202005, 202006,
+                 202007, 202008, 
+                 202009, 202010, 202011, 202012,
+                 202101, 202102, 202103, 202104]
+
+  future_months: [202106]   # como pide la consigna
+
+  qcanaritos: 5                   # cantidad de canaritos
+  experimento: "zlgbm_canarios_v1"  # sufijo para nombre KA...
+  top_n_kaggle: 12500               # cantidad de envíos = 1
