@@ -253,7 +253,7 @@ class ZLGBMConfig(BaseModel):
 
     # Meses futuros (holdout/competencia) por defecto
     future_months: List[int] = Field(
-        default_factory=lambda: [202106],
+        default_factory=lambda: [202108],
         description="Meses de holdout/competencia"
     )
 
@@ -267,7 +267,7 @@ class ZLGBMConfig(BaseModel):
     seeds: List[int] | None = None
     base_seed: int = 464939
 
-    n_envios: int = 12500
+    n_envios: int = 11500
 
     max_bin: int = 31
     min_data_in_leaf: int = 50
@@ -431,7 +431,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     logger.info("Leyendo dataset de features desde: %s", feature_path)
 
     df = _read_parquet(feature_path)
-    logger.info("Dataset original: %s filas, %s columnas", df.shape[0], df.shape[1])
+    logger.info("Dataset original: %s filas, %s columnas", df.shape[0], df.shape[1]) 
 
     # targets/pesos
     df = ensure_binarias_y_peso(df, cfg.columns)
@@ -509,7 +509,22 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         cfg.columns.binary_target_gan,
         peso_col,
         "mprestamos_personales",
-        "cprestamos_personales"
+        "cprestamos_personales",
+        #"mprestamos_hipotecarios",
+        #"cprestamos_hipotecarios",
+        "Master_Finiciomora", #driff1
+        "Visa_Finiciomora", #driff1
+        "mes_idx",
+        "foto_mes_int",
+        #"Master_fultimo_cierre", #driff2
+        #"mrentabilidad_annual", #driff2
+        #"Visa_fultimo_cierre", #driff2
+        #"delta_1_ctrx_quarter",
+        #"delta_2_ctrx_quarter",
+        #"ccajas_depositos",
+        #"flag_income_drop",
+        #"thomebanking",
+
     }
 
     X_train = df_train.drop(columns=[c for c in block_cols if c in df_train.columns])
@@ -611,7 +626,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar archivo Kaggle ----------------
     kaggle_path = os.path.join(
         zcfg.kaggle_dir,
-        f"KA_{zcfg.experimento}_{top_n}_202106_minleaf50_5can_1seed_19month_gb01_prestamosless.csv"
+        f"KA_{zcfg.experimento}_{top_n}_202106_minleaf50_5can_1seed_22month_gb01_prestamosless_driff1_0203less_final_agosto.csv"
     )
     _write_csv_df(tb_prediccion[[id_col, "Predicted"]], kaggle_path)
     logger.info("Archivo Kaggle (ensemble) guardado en: %s", kaggle_path)
@@ -619,7 +634,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar predicciones detalladas ----------------
     pred_detallado_path = os.path.join(
         zcfg.pred_dir,
-        f"pred_zlgbm_{zcfg.experimento}_202106_minleaf50_5can_1seed_19month_gb01_prestamosless.csv"
+        f"pred_zlgbm_{zcfg.experimento}_202106_minleaf50_5can_1seed_22month_gb01_prestamosless_driff1_0203less_final_agosto.csv"
     )
     # Aquí guardamos prob + Predicted (ya con 1 para top_n y 0 para el resto)
     _write_csv_df(tb_prediccion, pred_detallado_path)
