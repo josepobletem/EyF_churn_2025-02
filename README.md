@@ -162,30 +162,98 @@ Ejemplo de configuración mínima:
 
 ```yaml
 paths:
-  raw_dataset: data/raw/competencia_01.csv
-  processed_dataset: data/processed/competencia_01.csv
-  feature_dataset: data/processed/competencia_01_features.csv
+  # dataset crudo original (sin target todavía)
+  #raw_dataset: "data/raw/competencia_01_crudo.csv"
+  raw_dataset: "data/raw/competencia_02_crudo.csv"
 
+  # dataset con target churn/class (output de data_prep.py)
+  #processed_dataset: "data/processed/competencia_01.csv"
+  #processed_dataset: "data/processed/competencia_02.csv"
+  processed_dataset: "gs://jose_poblete_bukito3/eyf/processed/competencia_02.parquet"
+
+  # dataset final con features listo para entrenar (output de feature_engineering.py)
+  #feature_dataset: "data/processed/competencia_01_features_new.csv"
+  #feature_dataset: "data/processed/competencia_02_features_new.parquet"
+  feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_02_features_new.parquet"
 columns:
-  id_column: numero_de_cliente
-  period_column: foto_mes
-  target_column_full: clase_ternaria
-  target_binary_col: clase_binaria2
-  peso_col: clase_peso
+  # identificador único del cliente
+  id_column: "numero_de_cliente"
+
+  # periodo tipo YYYYMM (por ejemplo 202104)
+  period_column: "foto_mes"
+
+  # target creado en data_prep.py: BAJA+1 / BAJA+2 / CONTINUA
+  target_column: "clase_ternaria"
+  
+  # target para el optimizador
+  binary_target_col: "clase_binaria2"
+  peso_col: "clase_peso"
+  binary_target_gan: "clase_binaria1"
+
+logic:
+  # Documentación de negocio de churn
+  churn_definition: |
+    CASE
+      WHEN esta_t1 = 0 THEN 'BAJA+1'
+      WHEN esta_t1 = 1 AND esta_t2 = 0 THEN 'BAJA+2'
+      ELSE 'CONTINUA'
+    END
+  time_granularity: "mes"
+
+features:
+  # nombre con el que vamos a registrar el dataset base en DuckDB
+  # (es el processed_dataset leído por Python)
+  base_table_name: "base_clientes"
+
+  # orden de ejecución de los SQL
+  steps:
+    - "sql/01_base_tables.sql"
+    - "sql/02_feat_numeric.sql"
+    - "sql/03_final_model.sql"
+    - "sql/04_risk_behavior_and_join.sql"
+    - "sql/05_behavioral_features.sql"
 
 train:
-  train_months: [202101, 202102, 202103]
-  test_month: 202104
-  drop_cols: ["lag_3_ctrx_quarter"]
-  n_estimators: 5000
-  nfold: 5
+  # ya los tenías (pueden quedar aunque no se usen aquí)
+  n_models: 5
   seed: 12345
-  n_trials: 30
-  ganancia_acierto: 780000.0
-  costo_estimulo: 20000.0
-  weight_baja2: 1.00002
-  weight_baja1: 1.00001
-  weight_continua: 1.0
+  seeds: [464939, 782911, 213713, 811157, 502717, 203, 307, 409, 503, 607, 701, 809, 907, 1009,
+          1103, 1201, 1301, 1409, 1501, 1601, 1709, 1801, 1901, 2003,
+          782911, 101, 213713]
+  decision_threshold: 0.025
+
+  # ⚙️ NUEVO PARA ESTE SCRIPT
+  models_dir: "gs://jose_poblete_bukito3/eyf/zlgbm"  # donde se guardan modelo y árboles
+  kaggle_dir: "gs://jose_poblete_bukito3/eyf/kaggle" # donde se guardan archivos Kaggle
+
+  train_months: [ #201905, 201906,
+                 201907,
+                 201908, 
+                 201909, 
+                 201910,
+                 201911, 
+                 201912,
+                 202001,
+                 #202002, 202003,
+                 202004, 
+                 202005, 
+                 202006,
+                 202007,
+                 202008, 
+                 202009, 202010, 202011, 202012,
+                 202101, 
+                 202102,
+                 202103,
+                 202104,
+                 202105,
+                 202106]
+
+  future_months: [202108]   # como pide la consigna
+
+  qcanaritos: 5                   # cantidad de canaritos
+  experimento: "zlgbm_canarios_v1"  # sufijo para nombre KA...
+  top_n_kaggle: 11500               # cantidad de envíos = 1
+
 ```
 
 ---
