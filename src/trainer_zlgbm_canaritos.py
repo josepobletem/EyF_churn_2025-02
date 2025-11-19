@@ -263,7 +263,7 @@ class ZLGBMConfig(BaseModel):
     qcanaritos: int = 5
     experimento: str = "zlgbm_canaritos_ensamble_01"
 
-    n_models: int = 1
+    n_models: int = 5
     seeds: List[int] | None = None
     base_seed: int = 464939
 
@@ -626,7 +626,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar archivo Kaggle ----------------
     kaggle_path = os.path.join(
         zcfg.kaggle_dir,
-        f"KA_{zcfg.experimento}_{top_n}_202106_minleaf50_5can_1seed_22month_gb01_prestamosless_driff1_0203less_final_agosto.csv"
+        f"KA_{zcfg.experimento}_{top_n}_202106_minleaf50_5can_5seed_22month_gb01_prestamosless_driff1_0203less_final_agosto_semillero.csv"
     )
     _write_csv_df(tb_prediccion[[id_col, "Predicted"]], kaggle_path)
     logger.info("Archivo Kaggle (ensemble) guardado en: %s", kaggle_path)
@@ -634,7 +634,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar predicciones detalladas ----------------
     pred_detallado_path = os.path.join(
         zcfg.pred_dir,
-        f"pred_zlgbm_{zcfg.experimento}_202106_minleaf50_5can_1seed_22month_gb01_prestamosless_driff1_0203less_final_agosto.csv"
+        f"pred_zlgbm_{zcfg.experimento}_202106_minleaf50_5can_5seed_22month_gb01_prestamosless_driff1_0203less_final_agosto_semillero.csv"
     )
     # Aquí guardamos prob + Predicted (ya con 1 para top_n y 0 para el resto)
     _write_csv_df(tb_prediccion, pred_detallado_path)
