@@ -1,17 +1,20 @@
 paths:
   # dataset crudo original (sin target todavía)
   #raw_dataset: "data/raw/competencia_01_crudo.csv"
-  raw_dataset: "data/raw/competencia_02_crudo.csv"
+  #raw_dataset: "data/raw/competencia_02_crudo.csv"
+  raw_dataset: "data/raw/competencia_03_crudo_append.parquet"
 
   # dataset con target churn/class (output de data_prep.py)
   #processed_dataset: "data/processed/competencia_01.csv"
   #processed_dataset: "data/processed/competencia_02.csv"
-  processed_dataset: "gs://jose_poblete_bukito3/eyf/processed/competencia_02.parquet"
+  #processed_dataset: "gs://jose_poblete_bukito3/eyf/processed/competencia_02.parquet"
+  processed_dataset: "gs://jose_poblete_bukito3/eyf/processed/competencia_03.parquet"
 
   # dataset final con features listo para entrenar (output de feature_engineering.py)
   #feature_dataset: "data/processed/competencia_01_features_new.csv"
   #feature_dataset: "data/processed/competencia_02_features_new.parquet"
-  feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_02_features_new.parquet"
+  #feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_02_features_new.parquet"
+  feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_03_features.parquet"
 columns:
   # identificador único del cliente
   id_column: "numero_de_cliente"
@@ -52,41 +55,53 @@ features:
 
 train:
   # ya los tenías (pueden quedar aunque no se usen aquí)
-  n_models: 5
+  n_models: 20
   seed: 12345
-  seeds: [464939, 782911, 213713, 811157, 502717, 203, 307, 409, 503, 607, 701, 809, 907, 1009,
+  seeds: [464939, 782911, 213713, 811157, 502717, 736421,592889,463301,889147,219787,558913,
+           203, 307, 409, 503, 607, 701, 809, 907, 1009,
           1103, 1201, 1301, 1409, 1501, 1601, 1709, 1801, 1901, 2003,
-          782911, 101, 213713]
+          782911, 101, 213713,
+          934211, 128993, 671521, 347899, 915773, 28455,
+          ]
   decision_threshold: 0.025
 
-  # ⚙️ NUEVO PARA ESTE SCRIPT
-  models_dir: "gs://jose_poblete_bukito3/eyf/zlgbm"  # donde se guardan modelo y árboles
-  kaggle_dir: "gs://jose_poblete_bukito3/eyf/kaggle" # donde se guardan archivos Kaggle
+  # ⚙️ NUEVO PARA ESTE SCRIPT DE ZLightGBM CON CANARITOS
+  #models_dir: "gs://jose_poblete_bukito3/eyf/zlgbm"  # donde se guardan modelo y árboles
+  #kaggle_dir: "gs://jose_poblete_bukito3/eyf/kaggle" # donde se guardan archivos Kaggle
 
-  train_months: [ #201905, 201906,
-                 201907,
-                 201908, 
-                 201909, 
-                 201910,
+  # Path para bayesinan optimization
+  # models_dir: "gs://jose_poblete_bukito3/eyf/models"  
+
+  train_months: [
+                 #201907,
+                 #201908, 
+                 #201909, 
+                 201910, #drift
                  201911, 
                  201912,
                  202001,
-                 #202002, 202003,
+                 202002, #zlgbm se saca
+                 202003, #zlgbm se saca
                  202004, 
                  202005, 
-                 202006,
-                 202007,
+                 #202006, #drift y outliers
+                 #202007, # outliers
                  202008, 
-                 202009, 202010, 202011, 202012,
+                 202009,
+                 202010, 
+                 202011,
+                 #202012, # outliers
                  202101, 
                  202102,
                  202103,
                  202104,
                  202105,
-                 202106]
+                 #202106,
+                 #202107 # HASTA AQUI COMP 02
+                 ]
 
-  future_months: [202108]   # como pide la consigna
+  future_months: [202107]   # como pide la consigna
 
   qcanaritos: 5                   # cantidad de canaritos
-  experimento: "zlgbm_canarios_v1"  # sufijo para nombre KA...
+  experimento: "zlgbm_canarios_v1_comp03"  # sufijo para nombre KA...
   top_n_kaggle: 11500               # cantidad de envíos = 1

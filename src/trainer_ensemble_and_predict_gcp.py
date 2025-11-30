@@ -185,18 +185,24 @@ class TrainConfig(BaseModel):
     models_dir: str = Field("gs://jose_poblete_bukito3/eyf/models")
     train_months: List[int] = Field(
         default_factory=lambda: [#201809, 201810, 201811, 201812,
-                                 #201901, 201902, 201903, 201904, 201905, 201906, 201907, 201908, 201909, 
-                                 201910, 201911, 201912,
-                                 202001, 202002, 202003, 202004, 202005, 202006, 202007, 202008, 202009, 202010, 202011, 202012,
-                                 202101, 202102]#, 202103, 202104]
+                                 #201901, 201902, 201903, 201904, 201905, 201906, 201907, 201908, 201909,
+
+                                 # Experimentos recientes usan más meses:
+                                 #201910, 
+                                 201911, 201912,202001, 202002, 202003, 202004, 202005,
+                                 #202006, 
+                                 202007, 202008, 202009,202010, 202011, 202012,
+                                 202101, 202102, 
+                                 202103, 202104
+                                 ]
     )
-    test_month: int = Field(202104)
+    test_month: int = Field(202106)
     drop_cols: List[str] = Field(default_factory=lambda: ["lag_3_ctrx_quarter"])
     weight_baja2: float = Field(1.00002)
     weight_baja1: float = Field(1.00001)
     weight_continua: float = Field(1.0)
     seed: int = Field(12345)
-    n_models: int = Field(10)
+    n_models: int = Field(20)
     seeds: List[int] | None = Field(default=None)
     decision_threshold: float = Field(0.025)
     ganancia_acierto: float = Field(780000.0)
@@ -622,11 +628,11 @@ def main(argv=None):
         if _is_gcs(pred_dir):
             out_path_full = _join(
                 pred_dir,
-                f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan.csv"
+                f"pred_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan_M3.csv"
             )
             out_path_simple = _join(
                 pred_dir,
-                f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan.csv"
+                f"pred_simple_{result['mes']}_thr{args.threshold:.4f}_ensemble_500_20_{args.mes}_target_gan_M3.csv"
             )
             _write_csv_df(df_pred, out_path_full)
             _write_csv_df(df_simple[[load_config(args.config).columns.id_column, "Predicted"]], out_path_simple)

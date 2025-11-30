@@ -40,7 +40,7 @@ log() {
 # ---------- defaults ----------
 ENSEMBLE=1
 TRAIN_ONLY=0
-SCORE_MES="202104"
+SCORE_MES="202106"
 SCORE_THRESHOLD="0.015"
 
 # ---------- parse args ----------
@@ -89,10 +89,10 @@ log "=== [2/5] Generando datasets ============================="
 log "=========================================================="
 
 log "-> Paso A: data_prep (target / clase_ternaria)"
-log python -m src.data_prep
+python -m src.data_prep
 
 log "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
-log python -m src.feature_engineering
+python -m src.feature_engineering
 
 # ---------- Paso 3: Optimizer ----------
 log "=========================================================="

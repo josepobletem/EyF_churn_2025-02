@@ -224,7 +224,7 @@ def run_data_stage() -> str:
         logger.error("No se encontró el archivo de entrada: %s", raw_path)
         raise FileNotFoundError(f"No encontré el archivo {raw_path}")
 
-    df_raw_in = pd.read_csv(raw_path)
+    df_raw_in = pd.read_parquet(raw_path)
     logger.info("Datos crudos leídos. Shape: %s", (df_raw_in.shape,))
 
     # ------------------------------------------------------------------
