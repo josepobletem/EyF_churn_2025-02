@@ -14,7 +14,11 @@ paths:
   #feature_dataset: "data/processed/competencia_01_features_new.csv"
   #feature_dataset: "data/processed/competencia_02_features_new.parquet"
   #feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_02_features_new.parquet"
-  feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_03_features.parquet"
+  #feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_03_features.parquet"
+  feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_03_features_polar.parquet"
+  #feature_dataset:   "gs://jose_poblete_bukito3/eyf/features/competencia_03_features_polar_EM_max_min.parquet"
+
+
 columns:
   # identificador único del cliente
   id_column: "numero_de_cliente"
@@ -55,13 +59,24 @@ features:
 
 train:
   # ya los tenías (pueden quedar aunque no se usen aquí)
-  n_models: 20
+  n_models: 50
   seed: 12345
-  seeds: [464939, 782911, 213713, 811157, 502717, 736421,592889,463301,889147,219787,558913,
-           203, 307, 409, 503, 607, 701, 809, 907, 1009,
-          1103, 1201, 1301, 1409, 1501, 1601, 1709, 1801, 1901, 2003,
-          782911, 101, 213713,
-          934211, 128993, 671521, 347899, 915773, 28455,
+  seeds: [464939, 782911, 213713, 811157, 502717,
+          736421, 592889, 463301, 889147, 219787,
+          713409, 982331, 627519, 854773, 431287,
+          918445, 376201, 745691, 269553, 1009,
+          804221, 912557, 664981, 335729, 589043,
+          721843, 477119, 839467, 909311, 552883,
+          934211, 128993, 671521, 347899, 558913,
+          203, 307, 409, 503, 607,
+          701, 809, 907, 1103, 1201,
+          1301, 1409, 1501, 1601, 1709,
+          1801, 1901, 2003, 101, 915773,
+          28455, 638251, 970433, 542719, 881077,
+          309641, 752389, 194723, 82651, 46839,
+          903227, 255719, 619847, 784203, 331907,
+          867541, 592301, 447983, 713521, 988163,
+          524197,230101,231019, 675439, 812129, 456701
           ]
   decision_threshold: 0.025
 
@@ -73,9 +88,9 @@ train:
   # models_dir: "gs://jose_poblete_bukito3/eyf/models"  
 
   train_months: [
-                 #201907,
-                 #201908, 
-                 #201909, 
+                 #201907, #Sacar no undersampling
+                 #201908, #Sacar no undersampling
+                 #201909, #Sacar no undersampling
                  201910, #drift
                  201911, 
                  201912,
@@ -96,12 +111,12 @@ train:
                  202103,
                  202104,
                  202105,
-                 #202106,
-                 #202107 # HASTA AQUI COMP 02
+                 #202106, # HASTA AQUI COMP 02
+                 #202107 # Hasta aqui comp 03
                  ]
 
   future_months: [202107]   # como pide la consigna
 
-  qcanaritos: 5                   # cantidad de canaritos
+  qcanaritos: 20                   # cantidad de canaritos
   experimento: "zlgbm_canarios_v1_comp03"  # sufijo para nombre KA...
   top_n_kaggle: 11500               # cantidad de envíos = 1

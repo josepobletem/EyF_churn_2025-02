@@ -89,10 +89,13 @@ log "=== [2/5] Generando datasets ============================="
 log "=========================================================="
 
 log "-> Paso A: data_prep (target / clase_ternaria)"
-python -m src.data_prep
+log python -m src.data_prep
 
 log "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
-python -m src.feature_engineering
+log python -m src.feature_engineering
+
+log "-> Paso B comp03: feature_engineering_polars (features numéricas, lags)"
+log python -m src.feature_engineering_polars
 
 # ---------- Paso 3: Optimizer ----------
 log "=========================================================="
@@ -136,7 +139,22 @@ log "=========================================================="
 log "=== [6/6] Entrenando modelo zLightGBM con canaritos ======="
 log "=========================================================="
 
-python -m src.trainer_zlgbm_canaritos
+log python -m src.trainer_zlgbm_canaritos
+log "OK: ejecutados data_prep, feature_engineering y optimizer (resto comentado)."
+
+# ---------- Paso 6: Modelo zLightGBM con canaritos ----------
+log "==========================================================================="
+log "=== [7/7] Entrenando modelo zLightGBM con canaritos y undersampling ======="
+log "==========================================================================="
+
+log python -m src.trainer_zlgbm_canaritos_undersampling
+
+# ---------- Paso 6: Modelo zLightGBM con canaritos ----------
+log "================================================================================="
+log "=== [8/8] Entrenando modelo zLightGBM con canaritos y undersampling polar ======="
+log "================================================================================="
+
+python -m src.trainer_zlgbm_canaritos_undersampling_polar
 
 echo
-log "OK: ejecutados data_prep, feature_engineering y optimizer (resto comentado)."
+log "OK: ejecutados trainer_zlgbm_canaritos_undersamplig."

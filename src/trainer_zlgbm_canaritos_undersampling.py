@@ -1,4 +1,3 @@
-
 import os
 import io
 import logging
@@ -13,6 +12,7 @@ import pandas as pd
 import polars as pl
 import numpy as np
 import lightgbm as lgb
+import time
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -270,12 +270,18 @@ class ZLGBMConfig(BaseModel):
     n_envios: int = 11500
 
     max_bin: int = 31
-    min_data_in_leaf: int = 500
+    min_data_in_leaf: int = 50
     num_iterations: int = 700
     num_leaves: int = 999
     learning_rate: float = 1.0
     feature_fraction: float = 0.50
-    gradient_bound: float = 0.3  # sólo documental
+    gradient_bound: float = 0.1  # sólo documental
+
+    # 🔹 Nuevo: parámetro de undersampling en la config
+    undersample_factor: float = Field(
+        6.0,
+        description="Máximo ratio CONTINUA / no-CONTINUA en train (undersampling)"
+    )
 
 
 def build_lgbm_params(zcfg: ZLGBMConfig, seed_value: int) -> Dict[str, Any]:
@@ -411,6 +417,7 @@ def calcular_ganancia_ordenada(
 # =============================================================================
 
 def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any]:
+    t_start = time.time()
     """
     1) Carga features desde GCS/local.
     2) Asegura targets/pesos, crea canaritos con Polars.
@@ -431,7 +438,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     logger.info("Leyendo dataset de features desde: %s", feature_path)
 
     df = _read_parquet(feature_path)
-    logger.info("Dataset original: %s filas, %s columnas", df.shape[0], df.shape[1]) 
+    logger.info("Dataset original: %s filas, %s columnas", df.shape[0], df.shape[1])
 
     # targets/pesos
     df = ensure_binarias_y_peso(df, cfg.columns)
@@ -483,7 +490,10 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
 
     overlap = set(train_months).intersection(future_months)
     if overlap:
-        logger.warning("Meses presentes en train_months y future_months: %s (se usarán como train y future)", overlap)
+        logger.warning(
+            "Meses presentes en train_months y future_months: %s (se usarán como train y future)",
+            overlap,
+        )
 
     # máscaras
     mask_train = df_full[per_col].isin(train_months)
@@ -500,6 +510,64 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         df_future.shape[0],
     )
 
+    # -----------------------------------------------------------------
+    # UNDERSAMPLING DE LA CLASE MAYORITARIA "CONTINUA" EN TRAIN
+    # -----------------------------------------------------------------
+    target_multiclase = cfg.columns.target_column
+    if target_multiclase in df_train.columns:
+        mask_continua = df_train[target_multiclase] == "CONTINUA"
+        mask_no_continua = ~mask_continua
+
+        df_no_continua = df_train[mask_no_continua]
+        df_continua = df_train[mask_continua]
+
+        n_no_continua = df_no_continua.shape[0]
+        n_continua = df_continua.shape[0]
+
+        undersample_factor = max(zcfg.undersample_factor, 1.0)
+        max_continua = int(undersample_factor * n_no_continua)
+
+        if n_continua > max_continua:
+            logger.info(
+                "Aplicando undersampling de CONTINUA (factor=%.2f): original CONTINUA=%d, no_CONTINUA=%d, max_CONTINUA=%d",
+                undersample_factor,
+                n_continua,
+                n_no_continua,
+                max_continua,
+            )
+            df_continua_sample = df_continua.sample(
+                n=max_continua,
+                random_state=zcfg.base_seed,
+            )
+            df_train = pd.concat(
+                [df_no_continua, df_continua_sample],
+                axis=0
+            ).sample(
+                frac=1.0,
+                random_state=zcfg.base_seed
+            ).reset_index(drop=True)
+
+            logger.info(
+                "Post-undersampling: df_train=%s filas (CONTINUA=%d, no_CONTINUA=%d)",
+                df_train.shape[0],
+                (df_train[target_multiclase] == "CONTINUA").sum(),
+                (df_train[target_multiclase] != "CONTINUA").sum(),
+            )
+        else:
+            logger.info(
+                "No se aplica undersampling (factor=%.2f): CONTINUA=%d, no_CONTINUA=%d, max_CONTINUA=%d",
+                undersample_factor,
+                n_continua,
+                n_no_continua,
+                max_continua,
+            )
+    else:
+        logger.warning(
+            "No se encontró la columna de target multiclase '%s' en df_train; "
+            "no se aplica undersampling.",
+            target_multiclase,
+        )
+
     # ---------------- Matriz de features ----------------
     block_cols = {
         id_col,
@@ -510,21 +578,20 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         peso_col,
         "mprestamos_personales",
         "cprestamos_personales",
-        #"mprestamos_hipotecarios",
-        #"cprestamos_hipotecarios",
-        "Master_Finiciomora", #driff1
-        "Visa_Finiciomora", #driff1
+        # "mprestamos_hipotecarios",
+        # "cprestamos_hipotecarios",
+        "Master_Finiciomora",  # driff1
+        "Visa_Finiciomora",    # driff1
         "mes_idx",
         "foto_mes_int",
-        #"Master_fultimo_cierre", #driff2
-        #"mrentabilidad_annual", #driff2
-        #"Visa_fultimo_cierre", #driff2
-        #"delta_1_ctrx_quarter",
-        #"delta_2_ctrx_quarter",
-        #"ccajas_depositos",
-        #"flag_income_drop",
-        #"thomebanking",
-
+        # "Master_fultimo_cierre", # driff2
+        # "mrentabilidad_annual", # driff2
+        # "Visa_fultimo_cierre", # driff2
+        # "delta_1_ctrx_quarter",
+        # "delta_2_ctrx_quarter",
+        # "ccajas_depositos",
+        # "flag_income_drop",
+        # "thomebanking",
     }
 
     X_train = df_train.drop(columns=[c for c in block_cols if c in df_train.columns])
@@ -606,11 +673,11 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         cfg_cols=cfg.columns,
         ganancia_acierto=zcfg.ganancia_acierto,
         costo_estimulo=zcfg.costo_estimulo,
-        top_n = zcfg.n_envios
+        top_n=zcfg.n_envios
     )
     logger.info("Ganancia total (ensemble): %.2f", ganancia_total)
 
-    # ---------------- Top-N estilo Kaggle (Predicted 1/0) ----------------
+    # ---------------- Top-N estilo Kaggle ----------------
     # Ordenamos por prob descendente
     tb_prediccion = tb_prediccion.sort_values("prob", ascending=False).reset_index(drop=True)
 
@@ -626,7 +693,7 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar archivo Kaggle ----------------
     kaggle_path = os.path.join(
         zcfg.kaggle_dir,
-        f"KA_{zcfg.experimento}_{top_n}_202105_minleaf500_20can_50seed_22month_gb03_prestamosless_driff1_0203less_final_julio_semillero.csv"
+        f"KA_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_julio_semillero_undersampling6_polar.csv"
     )
     _write_csv_df(tb_prediccion[[id_col, "Predicted"]], kaggle_path)
     logger.info("Archivo Kaggle (ensemble) guardado en: %s", kaggle_path)
@@ -634,11 +701,20 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
     # ---------------- Guardar predicciones detalladas ----------------
     pred_detallado_path = os.path.join(
         zcfg.pred_dir,
-        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202105_minleaf500_20can_50seed_22month_gb03_prestamosless_driff1_0203less_final_julio_semillero.csv"
+        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_julio_semillero_undersampling6_polar.csv"
     )
     # Aquí guardamos prob + Predicted (ya con 1 para top_n y 0 para el resto)
     _write_csv_df(tb_prediccion, pred_detallado_path)
     logger.info("Predicciones detalladas (ensemble) guardadas en: %s", pred_detallado_path)
+
+    # ---------------- Tiempo de ejecución ----------------
+    elapsed_sec = time.time() - t_start
+    elapsed_min = elapsed_sec / 60.0
+    logger.info(
+        "Tiempo total de ejecución pipeline zLGBM: %.2f minutos (%.1f segundos)",
+        elapsed_min,
+        elapsed_sec,
+    )
 
     return {
         "ganancia_total": ganancia_total,

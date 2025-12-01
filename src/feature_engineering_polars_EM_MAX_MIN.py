@@ -6,13 +6,17 @@ feature_engineering_polars
 Genera variables derivadas (feature engineering) usando Polars:
 
 - Sumas horizontales (saldos, consumos, inversiones, etc.).
-- Lags y deltas (orden 1 y 2) para TODAS las variables numéricas,
-  excluyendo las columnas clave (id, periodo, target).
+- Suavizados exponenciales (EMA) y máximos/mínimos rolling
+  para algunas columnas agregadas.
+- Lags y deltas (orden 1 y 2) para TODAS las variables numéricas
+  excepto las columnas clave (id, periodo, target) y las nuevas
+  features de EMA / max / min.
 
 Flujo:
 1. Carga el dataset procesado con target (paths.processed_dataset en config.yaml).
 2. Aplica feature engineering en Polars.
-3. Guarda el dataset final en paths.feature_dataset (CSV o Parquet).
+3. Filtra solo periodos >= 201907.
+4. Guarda el dataset final en paths.feature_dataset (CSV o Parquet).
 
 Uso:
     python -m src.feature_engineering_polars
@@ -25,7 +29,7 @@ from typing import List
 import polars as pl
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-import gcsfs  # <--- para leer/escribir gs://
+import gcsfs  # para leer/escribir gs://
 
 # -------------------------------------------------
 # Logging
@@ -47,7 +51,7 @@ def is_gcs_path(path: str) -> bool:
 
 
 # -------------------------------------------------
-# Pydantic config models (compatibles con tu script actual)
+# Pydantic config models
 # -------------------------------------------------
 
 class PathsConfig(BaseModel):
@@ -130,7 +134,7 @@ def load_config(path: str = "config/config.yaml") -> FullConfig:
 
 
 # -------------------------------------------------
-# Definición de grupos de columnas (según tu snippet)
+# Definición de grupos de columnas
 # -------------------------------------------------
 
 # Totales de saldos en pesos
@@ -248,6 +252,22 @@ fe_columns = {
     "c_transacciones_total": TRANSACCIONES_COUNT,
 }
 
+# Columnas sobre las que queremos generar suavizados y extremos temporales
+TEMPORAL_FE_COLS = [
+    "m_saldo_total_pesos",
+    "m_saldo_total_dolares",
+    "m_consumo_tarjetas_pesos",
+    "m_consumo_tarjetas_dolares",
+    "m_pagos_recurrentes_pesos",
+    "m_inversiones_pesos",
+    "m_inversiones_dolares",
+    "m_endeudamiento_pesos",
+    "m_endeudamiento_dolares",
+    "m_payroll_total",
+    "m_limite_compra_total",
+    "c_transacciones_total",
+]
+
 
 # -------------------------------------------------
 # Funciones de feature engineering en Polars
@@ -263,6 +283,73 @@ def sum_columns_safe(df: pl.DataFrame, cols: list[str]) -> pl.Expr:
     if not existentes:
         return pl.lit(0)
     return pl.sum_horizontal([pl.col(c) for c in existentes])
+
+
+def add_temporal_smoothing_and_extremes(
+    df: pl.DataFrame,
+    id_col: str,
+    period_col: str,
+    cols: list[str],
+    ema_alphas: tuple[float, ...] = (0.3, 0.6),
+    windows: tuple[int, ...] = (3, 6, 12),
+) -> pl.DataFrame:
+    """
+    Agrega para cada columna en `cols` (por cliente y ordenado por periodo):
+
+    - Suavizados exponenciales (EMA) con distintos alphas:
+        {col}_ema_alpha03, {col}_ema_alpha06, ...
+    - Máximos y mínimos rolling:
+        {col}_max_win3, {col}_min_win3, {col}_max_win6, ...
+
+    Todo se hace en modo lazy para no romper memoria.
+    """
+    cols = [c for c in cols if c in df.columns]
+    if not cols:
+        logger.warning("add_temporal_smoothing_and_extremes: no hay columnas válidas en 'cols'.")
+        return df
+
+    logger.info(
+        "Agregando suavizados exponenciales y max/min rolling para %d columnas...",
+        len(cols),
+    )
+
+    lf = df.sort([id_col, period_col]).lazy()
+    exprs: list[pl.Expr] = []
+
+    for c in cols:
+        # EMAs
+        for alpha in ema_alphas:
+            alpha_str = str(alpha).replace(".", "p")
+            exprs.append(
+                pl.col(c)
+                .ewm_mean(alpha=alpha, adjust=True, min_periods=1)
+                .over(id_col)
+                .alias(f"{c}_ema_alpha{alpha_str}")
+            )
+
+        # Rolling max/min en ventanas de 3, 6, 12 meses
+        for w in windows:
+            exprs.append(
+                pl.col(c)
+                .rolling_max(window_size=w, min_periods=1)
+                .over(id_col)
+                .alias(f"{c}_max_win{w}")
+            )
+            exprs.append(
+                pl.col(c)
+                .rolling_min(window_size=w, min_periods=1)
+                .over(id_col)
+                .alias(f"{c}_min_win{w}")
+            )
+
+    lf = lf.with_columns(exprs)
+    result = lf.collect()
+
+    logger.info(
+        "Suavizados y extremos temporales agregados. Shape ahora: %s",
+        (result.shape,),
+    )
+    return result
 
 
 def add_lags_and_deltas(
@@ -312,9 +399,11 @@ def run_feature_engineering_polars() -> str:
     Pasos:
     1. Carga el dataset procesado con target (`paths.processed_dataset`).
     2. Calcula features agregadas (sumas horizontales).
-    3. Detecta todas las columnas numéricas (excluyendo id, periodo, target).
-    4. Aplica lags y deltas (lag1, lag2, d1, d2) a todas esas columnas.
-    5. Guarda el resultado en `paths.feature_dataset`.
+    3. Agrega EMAs y max/min rolling para algunas columnas agregadas.
+    4. Detecta columnas numéricas y aplica lags/deltas
+       (excluyendo id, periodo, target y EMAs / max/min).
+    5. Filtra periodos >= 201907.
+    6. Guarda el resultado en `paths.feature_dataset`.
 
     Returns
     -------
@@ -367,12 +456,31 @@ def run_feature_engineering_polars() -> str:
     ])
     logger.info("Features agregadas creadas. Shape actual: %s", (df.shape,))
 
-    # 3) Detectar columnas numéricas para lags/deltas (TODAS menos id, periodo, target)
+    # 2.b) Suavizados exponenciales y max/min temporales
+    df = add_temporal_smoothing_and_extremes(
+        df=df,
+        id_col=id_col,
+        period_col=period_col,
+        cols=TEMPORAL_FE_COLS,
+        ema_alphas=(0.3, 0.6),
+        windows=(3, 6, 12),
+    )
+
+    # 3) Detectar columnas numéricas para lags/deltas
+    #    (TODAS menos id, periodo, target y las nuevas EMA/max/min)
     EXCLUDE = {id_col, period_col, target_col}
-    num_cols = [
-        c for c, dt in zip(df.columns, df.dtypes)
-        if c not in EXCLUDE and dt.is_numeric()
-    ]
+    DERIVED_SUFFIXES = ("_ema_alpha", "_max_win", "_min_win")
+
+    num_cols: list[str] = []
+    for c, dt in zip(df.columns, df.dtypes):
+        if c in EXCLUDE:
+            continue
+        if not dt.is_numeric():
+            continue
+        if any(sfx in c for sfx in DERIVED_SUFFIXES):
+            continue
+        num_cols.append(c)
+
     logger.info(
         "Columnas numéricas seleccionadas para lags/deltas: %d columnas.",
         len(num_cols),
@@ -382,7 +490,12 @@ def run_feature_engineering_polars() -> str:
     # 4) Aplicar lags y deltas
     df = add_lags_and_deltas(df, id_col=id_col, period_col=period_col, cols=num_cols)
 
-    # 5) Guardar resultado final (local o GCS)
+    # 5) Filtrar periodos desde 201907 en adelante
+    logger.info("Filtrando filas con %s >= 201907 ...", period_col)
+    df = df.filter(pl.col(period_col) >= 201907)
+    logger.info("Shape luego de filtrar periodos >= 201907: %s", (df.shape,))
+
+    # 6) Guardar resultado final (local o GCS)
     if is_gcs_path(feature_out_path):
         fs = gcsfs.GCSFileSystem()
         if feature_out_path.endswith(".parquet"):

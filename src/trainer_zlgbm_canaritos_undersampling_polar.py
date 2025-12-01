@@ -1,21 +1,33 @@
+# -*- coding: utf-8 -*-
+"""
+zLGBM pipeline con Polars
+=========================
+
+- Lee features (parquet) con Polars (local o GCS).
+- Crea targets binarios y pesos con Polars.
+- Añade canaritos con Polars.
+- Separa train / future y hace undersampling de CONTINUA en Polars.
+- Convierte solo los subsets finales a pandas para entrenar LightGBM.
+"""
 
 import os
 import io
 import logging
 from typing import Dict, Any, List
-
 import tempfile
 import subprocess
 import pickle
 import yaml
 import fsspec
+import time
+
+import numpy as np
 import pandas as pd
 import polars as pl
-import numpy as np
 import lightgbm as lgb
 
-from pydantic import BaseModel, Field, ValidationError
 
+from pydantic import BaseModel, Field, ValidationError
 
 # =============================================================================
 # LOGGING
@@ -58,8 +70,7 @@ class ColumnsConfig(BaseModel):
 class FullConfig(BaseModel):
     paths: PathsConfig
     columns: ColumnsConfig
-    # dejamos train como dict genérico para no romper otros scripts
-    train: Dict[str, Any] | None = None
+    train: Dict[str, Any] | None = None  # dict genérico
 
 
 # =============================================================================
@@ -100,10 +111,14 @@ def _path_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
-def _read_parquet(path: str) -> pd.DataFrame:
+def _read_parquet(path: str) -> pl.DataFrame:
+    """
+    Lee parquet como Polars DataFrame (local o GCS).
+    """
     if _is_gcs(path):
-        return pd.read_parquet(path, storage_options={"token": "cloud"})
-    return pd.read_parquet(path)
+        with fsspec.open(path, "rb", **{"token": "cloud"}) as f:
+            return pl.read_parquet(f)
+    return pl.read_parquet(path)
 
 
 def _read_yaml(path: str) -> dict:
@@ -148,7 +163,6 @@ def _write_text(path: str, text: str):
     En GCS usamos siempre gsutil para evitar el problema de scopes.
     """
     if _is_gcs(path):
-        # gsutil espera bytes
         data = text.encode("utf-8")
         _gsutil_fallback_write(path, data)
         return
@@ -206,28 +220,31 @@ def create_canaritos(df: pl.DataFrame, qcanaritos: int = 100) -> pl.DataFrame:
 
 
 # =============================================================================
-# FEATURE ENGINEERING PARA TARGETS Y PESOS
+# FEATURE ENGINEERING PARA TARGETS Y PESOS (POLARS)
 # =============================================================================
 
-def ensure_binarias_y_peso(df: pd.DataFrame, cfg_cols: ColumnsConfig) -> pd.DataFrame:
+def ensure_binarias_y_peso(df: pl.DataFrame, cfg_cols: ColumnsConfig) -> pl.DataFrame:
     """
-    Crea / asegura:
-      - clase_binaria1: 1 si BAJA+2, 0 resto
-      - clase_binaria2: 1 si BAJA+1 o BAJA+2, 0 si CONTINUA
-      - clase_peso: por defecto = 1.0 si no existe (weights neutros)
+    Versión Polars:
+      - binary_target_gan: 1 si BAJA+2, 0 resto
+      - binary_target_col: 1 si BAJA+1 o BAJA+2, 0 si CONTINUA
+      - peso_col: por defecto = 1.0 si no existe
     """
-    df = df.copy()
     tcol = cfg_cols.target_column
-    peso_col = cfg_cols.peso_col
-
     if tcol not in df.columns:
         raise KeyError(f"Target multiclase {tcol} no está en el dataset de features.")
 
-    df["clase_binaria1"] = np.where(df[tcol] == "BAJA+2", 1, 0)
-    df["clase_binaria2"] = np.where(df[tcol] == "CONTINUA", 0, 1)
+    col_gan = cfg_cols.binary_target_gan
+    col_bin = cfg_cols.binary_target_col
+    peso_col = cfg_cols.peso_col
+
+    df = df.with_columns([
+        pl.when(pl.col(tcol) == "BAJA+2").then(1).otherwise(0).alias(col_gan),
+        pl.when(pl.col(tcol) == "CONTINUA").then(0).otherwise(1).alias(col_bin),
+    ])
 
     if peso_col not in df.columns:
-        df[peso_col] = 1.0
+        df = df.with_columns(pl.lit(1.0).alias(peso_col))
 
     return df
 
@@ -251,7 +268,6 @@ class ZLGBMConfig(BaseModel):
         description="Carpeta para archivos estilo Kaggle"
     )
 
-    # Meses futuros (holdout/competencia) por defecto
     future_months: List[int] = Field(
         default_factory=lambda: [202107],
         description="Meses de holdout/competencia"
@@ -270,12 +286,17 @@ class ZLGBMConfig(BaseModel):
     n_envios: int = 11500
 
     max_bin: int = 31
-    min_data_in_leaf: int = 500
+    min_data_in_leaf: int = 50
     num_iterations: int = 700
     num_leaves: int = 999
     learning_rate: float = 1.0
     feature_fraction: float = 0.50
-    gradient_bound: float = 0.3  # sólo documental
+    gradient_bound: float = 0.1  # sólo documental
+
+    undersample_factor: float = Field(
+        6.0,
+        description="Máximo ratio CONTINUA / no-CONTINUA en train (undersampling)"
+    )
 
 
 def build_lgbm_params(zcfg: ZLGBMConfig, seed_value: int) -> Dict[str, Any]:
@@ -300,12 +321,6 @@ def build_lgbm_params(zcfg: ZLGBMConfig, seed_value: int) -> Dict[str, Any]:
 
 
 def _build_seeds_from_cfg(cfg: FullConfig, zcfg: ZLGBMConfig) -> List[int]:
-    """
-    Prioridad:
-      1) train.seeds del YAML (si existen)
-      2) zcfg.seeds
-      3) base_seed + rango(n_models)
-    """
     seeds = None
 
     if isinstance(cfg.train, dict) and "seeds" in cfg.train:
@@ -327,7 +342,7 @@ def _build_seeds_from_cfg(cfg: FullConfig, zcfg: ZLGBMConfig) -> List[int]:
 
 
 # =============================================================================
-# GANANCIA CON MERGE EXPLÍCITO
+# GANANCIA CON MERGE EXPLÍCITO (PANDAS)
 # =============================================================================
 
 def calcular_ganancia_ordenada(
@@ -338,19 +353,10 @@ def calcular_ganancia_ordenada(
     costo_estimulo: float,
     top_n: int | None = None,
 ) -> float:
-    """
-    Calcula ganancia ordenando por prob desc, con merge por (id, mes).
-
-    - Si top_n es None -> se comporta como antes: devuelve la ganancia máxima
-      a lo largo de la curva acumulada.
-    - Si top_n es un entero -> calcula la ganancia SOLO sobre el top_n
-      (estilo Kaggle: primeros N clientes con Predicted=1).
-    """
     id_col = cfg_cols.id_column
     per_col = cfg_cols.period_column
     bin_col = cfg_cols.binary_target_gan
 
-    # Merge predicciones con la verdad
     merged = df_pred.merge(
         df_true[[id_col, per_col, bin_col]],
         on=[id_col, per_col],
@@ -364,15 +370,11 @@ def calcular_ganancia_ordenada(
             "¿Seguro que hay targets para esos meses future?"
         )
 
-    # Reemplazo NaN por 0 (no churn) para evitar romper el cálculo
     merged[bin_col] = merged[bin_col].fillna(0).astype(int)
 
-    # Ordenar por probabilidad descendente
     merged = merged.sort_values("prob", ascending=False).reset_index(drop=True)
-
     y_true = merged[bin_col].to_numpy().astype(int)
 
-    # Si viene top_n -> sólo usamos ese prefijo
     if top_n is not None:
         top_n_eff = min(top_n, len(y_true))
         y_true_top = y_true[:top_n_eff]
@@ -390,7 +392,6 @@ def calcular_ganancia_ordenada(
         )
         return gan_total
 
-    # Comportamiento viejo: max de la curva acumulada
     cash_flow = np.where(y_true == 1, ganancia_acierto, -costo_estimulo)
     gan_acum = np.cumsum(cash_flow)
 
@@ -407,56 +408,40 @@ def calcular_ganancia_ordenada(
 
 
 # =============================================================================
-# PIPELINE PRINCIPAL (zLGBM + ENSEMBLE + train_months desde config.yaml)
+# PIPELINE PRINCIPAL (zLGBM + ENSEMBLE con Polars)
 # =============================================================================
 
 def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any]:
-    """
-    1) Carga features desde GCS/local.
-    2) Asegura targets/pesos, crea canaritos con Polars.
-    3) Define:
-        - train_months desde config.train.train_months (si existe)
-        - future_months desde config.train.future_months o defaults del zcfg
-    4) Entrena ensemble de LightGBM estilo zLGBM sobre train_months.
-    5) Predice en future_months promediando probabilidades.
-    6) Calcula ganancia con merge.
-    7) Guarda modelos, predicciones y archivo Kaggle en GCS.
-    """
+    t_start = time.time()
 
     # ---------------- Config ----------------
     cfg = load_config(config_path)
     zcfg = ZLGBMConfig()
 
     feature_path = cfg.paths.feature_dataset
-    logger.info("Leyendo dataset de features desde: %s", feature_path)
+    logger.info("Leyendo dataset de features (Polars) desde: %s", feature_path)
 
-    df = _read_parquet(feature_path)
-    logger.info("Dataset original: %s filas, %s columnas", df.shape[0], df.shape[1]) 
+    df_pl = _read_parquet(feature_path)
+    logger.info("Dataset original (Polars): %s filas, %s columnas", df_pl.height, len(df_pl.columns))
 
-    # targets/pesos
-    df = ensure_binarias_y_peso(df, cfg.columns)
+    # Targets/pesos en Polars
+    df_pl = ensure_binarias_y_peso(df_pl, cfg.columns)
 
-    # Polars -> canaritos -> back to pandas
-    logger.info("Convirtiendo a Polars para crear canaritos (q=%d)...", zcfg.qcanaritos)
-    df_pl = pl.from_pandas(df)
+    # Canaritos en Polars
+    logger.info("Creando canaritos en Polars (q=%d)...", zcfg.qcanaritos)
     df_pl = create_canaritos(df_pl, qcanaritos=zcfg.qcanaritos)
-    df_full = df_pl.to_pandas()
-    logger.info(
-        "Dataset con canaritos: %s filas, %s columnas",
-        df_full.shape[0],
-        df_full.shape[1],
-    )
+    logger.info("Dataset con canaritos (Polars): %s filas, %s columnas", df_pl.height, len(df_pl.columns))
 
     # ---------------- Resolver meses de train y future ----------------
     id_col = cfg.columns.id_column
     per_col = cfg.columns.period_column
     t_bin_gan = cfg.columns.binary_target_gan
     peso_col = cfg.columns.peso_col
+    target_multiclase = cfg.columns.target_column
 
-    all_months = sorted(df_full[per_col].unique().tolist())
+    all_months = sorted(df_pl.select(per_col).unique().to_series().to_list())
     logger.info("Meses disponibles en dataset: %s", all_months)
 
-    # future_months: priorizamos lo que venga en config.train.future_months
     future_months = zcfg.future_months
     if isinstance(cfg.train, dict) and "future_months" in cfg.train:
         fm = cfg.train.get("future_months") or []
@@ -464,7 +449,6 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
             future_months = [int(m) for m in fm]
     logger.info("Meses future (holdout/competencia): %s", future_months)
 
-    # train_months: si está en YAML lo usamos, si no -> todos menos future
     if isinstance(cfg.train, dict) and "train_months" in cfg.train:
         tm_raw = cfg.train.get("train_months") or []
         train_months = [int(m) for m in tm_raw]
@@ -483,22 +467,78 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
 
     overlap = set(train_months).intersection(future_months)
     if overlap:
-        logger.warning("Meses presentes en train_months y future_months: %s (se usarán como train y future)", overlap)
+        logger.warning(
+            "Meses presentes en train_months y future_months: %s (se usarán como train y future)",
+            overlap,
+        )
 
-    # máscaras
-    mask_train = df_full[per_col].isin(train_months)
-    mask_future = df_full[per_col].isin(future_months)
-
-    df_train = df_full[mask_train].copy()
-    df_future = df_full[mask_future].copy()
+    # Subsets en Polars
+    df_train_pl = df_pl.filter(pl.col(per_col).is_in(train_months))
+    df_future_pl = df_pl.filter(pl.col(per_col).is_in(future_months))
 
     logger.info(
         "Train (train_months=%s): %s filas | Future (future_months=%s): %s filas",
         train_months,
-        df_train.shape[0],
+        df_train_pl.height,
         future_months,
-        df_future.shape[0],
+        df_future_pl.height,
     )
+
+    # -----------------------------------------------------------------
+    # UNDERSAMPLING DE CONTINUA EN TRAIN (Polars)
+    # -----------------------------------------------------------------
+    if target_multiclase in df_train_pl.columns:
+        df_no_continua_pl = df_train_pl.filter(pl.col(target_multiclase) != "CONTINUA")
+        df_continua_pl = df_train_pl.filter(pl.col(target_multiclase) == "CONTINUA")
+
+        n_no_continua = df_no_continua_pl.height
+        n_continua = df_continua_pl.height
+
+        undersample_factor = max(zcfg.undersample_factor, 1.0)
+        max_continua = int(undersample_factor * n_no_continua)
+
+        if n_continua > max_continua and n_no_continua > 0:
+            logger.info(
+                "Aplicando undersampling de CONTINUA (factor=%.2f): original CONTINUA=%d, no_CONTINUA=%d, max_CONTINUA=%d",
+                undersample_factor,
+                n_continua,
+                n_no_continua,
+                max_continua,
+            )
+            df_continua_sample_pl = df_continua_pl.sample(
+                n=max_continua,
+                shuffle=True,
+                seed=zcfg.base_seed,
+            )
+            df_train_pl = pl.concat(
+                [df_no_continua_pl, df_continua_sample_pl],
+                how="vertical"
+            ).sample(
+                fraction=1.0,
+                shuffle=True,
+                seed=zcfg.base_seed,
+            )
+            logger.info(
+                "Post-undersampling (Polars): df_train=%s filas",
+                df_train_pl.height,
+            )
+        else:
+            logger.info(
+                "No se aplica undersampling (factor=%.2f): CONTINUA=%d, no_CONTINUA=%d, max_CONTINUA=%d",
+                undersample_factor,
+                n_continua,
+                n_no_continua,
+                max_continua,
+            )
+    else:
+        logger.warning(
+            "No se encontró la columna de target multiclase '%s' en df_train; no se aplica undersampling.",
+            target_multiclase,
+        )
+
+    # ---------------- Pasar a pandas SOLO train/future ----------------
+    df_train = df_train_pl.to_pandas()
+    df_future = df_future_pl.to_pandas()
 
     # ---------------- Matriz de features ----------------
     block_cols = {
@@ -510,21 +550,10 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         peso_col,
         "mprestamos_personales",
         "cprestamos_personales",
-        #"mprestamos_hipotecarios",
-        #"cprestamos_hipotecarios",
-        "Master_Finiciomora", #driff1
-        "Visa_Finiciomora", #driff1
+        "Master_Finiciomora",
+        "Visa_Finiciomora",
         "mes_idx",
         "foto_mes_int",
-        #"Master_fultimo_cierre", #driff2
-        #"mrentabilidad_annual", #driff2
-        #"Visa_fultimo_cierre", #driff2
-        #"delta_1_ctrx_quarter",
-        #"delta_2_ctrx_quarter",
-        #"ccajas_depositos",
-        #"flag_income_drop",
-        #"thomebanking",
-
     }
 
     X_train = df_train.drop(columns=[c for c in block_cols if c in df_train.columns])
@@ -564,12 +593,8 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         )
         models.append(model)
 
-        # Obtener el modelo como string (NO usar save_model(None))
         model_str = model.model_to_string()
-
-        # Usar _join por si zcfg.models_dir es gs://...
         model_txt_path = _join(zcfg.models_dir, f"zmodelo_seed{seed_value}.txt")
-
         _write_text(model_txt_path, model_str)
         logger.info("Modelo seed=%d guardado en: %s", seed_value, model_txt_path)
 
@@ -606,39 +631,37 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
         cfg_cols=cfg.columns,
         ganancia_acierto=zcfg.ganancia_acierto,
         costo_estimulo=zcfg.costo_estimulo,
-        top_n = zcfg.n_envios
+        top_n=zcfg.n_envios
     )
     logger.info("Ganancia total (ensemble): %.2f", ganancia_total)
 
-    # ---------------- Top-N estilo Kaggle (Predicted 1/0) ----------------
-    # Ordenamos por prob descendente
+    # ---------------- Top-N estilo Kaggle ----------------
     tb_prediccion = tb_prediccion.sort_values("prob", ascending=False).reset_index(drop=True)
-
-    # Inicializamos Predicted en 0
     tb_prediccion["Predicted"] = 0
-
-    # Número de envíos (top N)
     top_n = min(zcfg.n_envios, len(tb_prediccion))
-
-    # Ponemos 1 a los primeros top_n
     tb_prediccion.loc[: top_n - 1, "Predicted"] = 1
 
-    # ---------------- Guardar archivo Kaggle ----------------
     kaggle_path = os.path.join(
         zcfg.kaggle_dir,
-        f"KA_{zcfg.experimento}_{top_n}_202105_minleaf500_20can_50seed_22month_gb03_prestamosless_driff1_0203less_final_julio_semillero.csv"
+        f"KA_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_julio_semillero_undersampling6_polar_drif_outl_less.csv"
     )
     _write_csv_df(tb_prediccion[[id_col, "Predicted"]], kaggle_path)
     logger.info("Archivo Kaggle (ensemble) guardado en: %s", kaggle_path)
 
-    # ---------------- Guardar predicciones detalladas ----------------
     pred_detallado_path = os.path.join(
         zcfg.pred_dir,
-        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202105_minleaf500_20can_50seed_22month_gb03_prestamosless_driff1_0203less_final_julio_semillero.csv"
+        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_julio_semillero_undersampling6_polar_drif_outl_less.csv"
     )
-    # Aquí guardamos prob + Predicted (ya con 1 para top_n y 0 para el resto)
     _write_csv_df(tb_prediccion, pred_detallado_path)
     logger.info("Predicciones detalladas (ensemble) guardadas en: %s", pred_detallado_path)
+
+    elapsed_sec = time.time() - t_start
+    elapsed_min = elapsed_sec / 60.0
+    logger.info(
+        "Tiempo total de ejecución pipeline zLGBM: %.2f minutos (%.1f segundos)",
+        elapsed_min,
+        elapsed_sec,
+    )
 
     return {
         "ganancia_total": ganancia_total,
