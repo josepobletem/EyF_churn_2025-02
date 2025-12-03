@@ -168,13 +168,58 @@ run_full_pipeline.bat
 bash run_full_pipeline.sh
 ```
 
-Ambos scripts hacen:
+Ambos scripts hacen para comp 01:
 1. Activan el entorno `.venv`.
 2. Ejecutan:
    - `python -m src.data_prep`
    - `python -m src.feature_engineering`
    - `python -m src.optimizer`
    - `python -m src.trainer`
+  
+Para competencia 02 `run_full_pipeline.sh` :
+1. Activan el entorno `.venv`.
+2. Instalar zlgbm:
+3. 
+```
+###################zlgbm ########################
+cd
+rm -rf  LightGBM
+git clone --recursive  https://github.com/dmecoyfin/LightGBM
+
+source  ~/.venv/bin/activate
+pip uninstall --yes lightgbm
+
+# instalacion Python
+cd  ~/LightGBM
+sh ./build-python.sh  install
+```
+
+3. Ejecutan:
+   - `python -m src.data_prep`
+   - `python -m src.feature_engineering`
+   - `python -m src.trainer_zlgbm_canaritos`
+  
+Para competencia 03 `run_full_pipeline.sh` :
+1. Activan el entorno `.venv`.
+2. Instalar zlgbm:
+```
+###################zlgbm ########################
+cd
+rm -rf  LightGBM
+git clone --recursive  https://github.com/dmecoyfin/LightGBM
+
+source  ~/.venv/bin/activate
+pip uninstall --yes lightgbm
+
+# instalacion Python
+cd  ~/LightGBM
+sh ./build-python.sh  install
+```
+
+3. Ejecutan:
+   - `python -m src.data_prep`
+   - `python -m src.feature_engineering_polars_comp03.py`
+   - `python -m src.trainer_zlgbm_canaritos_undersampling_polar_comp03`
 
 ---
 
