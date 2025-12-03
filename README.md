@@ -181,7 +181,6 @@ bash run_full_pipeline.sh
 
 1. Activan el entorno `.venv`.
 2. Instalar zlgbm:
-3. 
 ```
 ###################zlgbm ########################
 cd
