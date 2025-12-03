@@ -94,8 +94,11 @@ log python -m src.data_prep
 log "-> Paso B: feature_engineering (features numéricas, lags, ratios...)"
 log python -m src.feature_engineering
 
-log "-> Paso B comp03: feature_engineering_polars (features numéricas, lags)"
-log python -m src.feature_engineering_polars
+log "-> Paso B.1 comp03: feature_engineering_polars_comp03 (features numéricas, lags)"
+log python -m src.feature_engineering_polars_comp03
+
+log "-> Paso B.2 comp03: feature_engineering_polars_EM_MAX_MIN_comp03 (features numéricas, lags)"
+log python -m src.feature_engineering_polars_EM_MAX_MIN_comp03
 
 # ---------- Paso 3: Optimizer ----------
 log "=========================================================="
@@ -154,7 +157,7 @@ log "===========================================================================
 log "=== [8/8] Entrenando modelo zLightGBM con canaritos y undersampling polar ======="
 log "================================================================================="
 
-python -m src.trainer_zlgbm_canaritos_undersampling_polar
+python -m src.trainer_zlgbm_canaritos_undersampling_polar_comp03
 
 echo
 log "OK: ejecutados trainer_zlgbm_canaritos_undersamplig."
