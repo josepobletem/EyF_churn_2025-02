@@ -376,18 +376,12 @@ Este módulo realiza:
  - Generación de features usando Polars (alta velocidad y bajo consumo de memoria).
 
  - Agregados avanzados:
-
-    - Máximos / mínimos por mes
  
     - Lags adicionales
 
     - Lags de segundo orden
 
     - Diferencias (deltas)
-
-    - Percentiles por variable
-
-    - Suavizamientos exponenciales (EMA)
 
  - Filtrado automático de meses conflictivos (drift y outliers detectados previamente).
 
