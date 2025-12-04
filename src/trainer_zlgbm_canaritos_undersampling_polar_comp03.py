@@ -269,7 +269,7 @@ class ZLGBMConfig(BaseModel):
     )
 
     future_months: List[int] = Field(
-        default_factory=lambda: [202107],
+        default_factory=lambda: [202109],
         description="Meses de holdout/competencia"
     )
 
@@ -643,14 +643,14 @@ def run_zlgbm_pipeline(config_path: str = "config/config.yaml") -> Dict[str, Any
 
     kaggle_path = os.path.join(
         zcfg.kaggle_dir,
-        f"KA_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_Julio_semillero_undersampling6_polar_drift_out_less.csv"
+        f"KA_{zcfg.experimento}_{top_n}_202107_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_Septiembre_semillero_undersampling6_polar_drift_out_less.csv"
     )
     _write_csv_df(tb_prediccion[[id_col, "Predicted"]], kaggle_path)
     logger.info("Archivo Kaggle (ensemble) guardado en: %s", kaggle_path)
 
     pred_detallado_path = os.path.join(
         zcfg.pred_dir,
-        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202105_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_Julio_semillero_undersampling6_polar_drift_out_less.csv"
+        f"pred_zlgbm_{zcfg.experimento}_{top_n}_202107_minleaf50_20can_50seed_22month_gb01_prestamosless_driff1_0203less_final_Septiembre_semillero_undersampling6_polar_drift_out_less.csv"
     )
     _write_csv_df(tb_prediccion, pred_detallado_path)
     logger.info("Predicciones detalladas (ensemble) guardadas en: %s", pred_detallado_path)
